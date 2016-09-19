@@ -1,2 +1,4 @@
-sudo docker stop anaconda-tf
-sudo nvidia-docker run --name anaconda-tf -t -i -p 8889:8888 -v /home/deep/docker/notebooks:/notebooks -v /home/deep/dades:/data sensetheflow/anaconda-tf
+sudo docker stop deepstack
+sudo docker rm deepstack
+sudo nvidia-docker run --name deepstack -t -p 8889:8888 -v /home/deep/docker/notebooks:/notebooks -v /home/deep/dades:/data sensetheflow/deepstack
+# -i, removed

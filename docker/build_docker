@@ -1,1 +1,1 @@
-sudo docker build -t sensetheflow/anaconda-tf:latest .
+sudo docker build -t sensetheflow/deepstack:latest .

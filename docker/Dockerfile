@@ -4,8 +4,11 @@ MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 
 # Update + dependencies #
 #########################
-RUN apt-get update && apt-get install -y axel bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
-	openjdk-8-jdk-headless
+RUN apt-get update && \
+	apt-get install -y axel bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
+		openjdk-8-jdk-headless libsnappy-dev libhdf5-serial-dev libatlas-base-dev liblmdb-dev cmake \
+		autoconf protobuf-compiler && \
+	apt-get install --no-install-recommends -y libboost-all-dev
 
 # Get anaconda #
 ################
@@ -13,7 +16,8 @@ RUN axel -a -n 10 https://repo.continuum.io/archive/Anaconda2-4.1.1-Linux-x86_64
 RUN bash Anaconda2-4.1.1-Linux-x86_64.sh -b -p /opt/anaconda
 
 ## Export path
-ENV PATH=/opt/anaconda/bin:/root/bin:$PATH
+ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 ## Configure anaconda
 EXPOSE 8888
@@ -43,6 +47,12 @@ RUN curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v5.1/cu
     tar -xzf cudnn-8.0-linux-x64-v5.1.tgz -C /usr/local && \
     rm cudnn-8.0-linux-x64-v5.1.tgz && \
     ldconfig
+
+
+# Update CUDA Thrust (rc 8.0 issue) #
+#####################################
+RUN git clone https://github.com/thrust/thrust.git
+RUN cp -R thrust/thrust/* /usr/local/cuda/include/thrust/
 
 
 # Get Bazel #
@@ -76,10 +86,66 @@ RUN bazel build -s  -c opt --config=cuda --verbose_failures //tensorflow/tools/p
 RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 RUN pip install /tmp/tensorflow_pkg/tensorflow-0.10.0-py2-none-any.whl
 
+## Back to root
+WORKDIR ..
+
+# Get Caffe dependencies #
+##########################
+
+## Opencv
+RUN git clone https://github.com/opencv/opencv.git
+RUN mkdir opencv/build
+WORKDIR opencv/build
+RUN cmake  -DCMAKE_BUILD_TYPE=RELEASE \
+		-DCMAKE_INSTALL_PREFIX=/usr/local \
+		-DBUILD_TIFF=ON -DPYTHON_EXECUTABLE=/opt/anaconda/bin/python \
+		-DPYTHON_INCLUDE_DIRS=/opt/anaconda/include/python2.7 \
+		-DPYTHON_LIBRARY=/opt/anaconda/lib/libpython2.7.so .. && \
+	make -j8 install
+WORKDIR ../..
+
+## Google flags
+RUN git clone https://github.com/gflags/gflags.git
+RUN mkdir gflags/build
+WORKDIR gflags/build
+RUN cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON .. && make -j8 install
+WORKDIR ../..
+
+## Google log
+RUN git clone https://github.com/google/glog.git
+WORKDIR glog
+RUN apt-get install -y libtool
+RUN autoreconf --force --install && \
+	./configure --prefix=/usr/local && \
+	echo "#define GOOGLE_GLOG_DLL_DECL " >> src/config.h && \
+	make -j8 install
+WORKDIR ..
+
+## Protobuf
+RUN git clone https://github.com/google/protobuf.git
+WORKDIR protobuf
+RUN ./autogen.sh && ./configure --prefix=/usr/local && make -j8 install
+WORKDIR ..
+
+## Leveldb
+RUN git clone https://github.com/google/leveldb.git
+WORKDIR leveldb
+RUN make -j8
+RUN cp out-shared/*.so* /usr/local/lib/ && cp out-static/*.a* /usr/local/lib/ && cp -R include/* /usr/local/include
+WORKDIR ..
+
+## Caffe
+RUN git clone https://github.com/BVLC/caffe.git
+RUN mkdir caffe/build
+WORKDIR caffe/build
+RUN cmake .. && make -j8
+
+
 
 # Install other dependencies #
 ##############################
 RUN pip install tqdm
+RUN conda install -y opencv
 ENV PYTHONPATH=/notebooks
 
 # Permanent volumnes #
@@ -90,6 +156,7 @@ VOLUME ["/notebooks"]
 RUN mkdir /data
 VOLUME ["/data"]
 
+ENV PYTHONPATH=/caffe/python:$PYTHONPATH
 
 # Entry point #
 ###############
