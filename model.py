@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import sys
 from tqdm import tqdm
-from Layers import *
+from layers import *
 from datetime import datetime
 
 try:
