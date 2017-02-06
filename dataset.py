@@ -34,7 +34,7 @@ class DataLoader(object):
     # Starts the prefetching thread
     def start_prefetch(self):
         if self.prefetch > 0 and not self.prefetch_started:
-            self.prefetch_thread = Thread(target=self.batch_prefetcher)
+            self.prefetch_thread = Thread(target=self.batch_prefetcher, args=(self,))
             self.prefetch_thread.start()
             self.prefetch_started = True
 
@@ -65,7 +65,7 @@ class DataLoader(object):
         return self
 
     # Function ran by the thread
-    def batch_prefetcher(self):
+    def batch_prefetcher(x, self):
         while not self.prefetch_stop:
             # Generate a batch
             batch = self.gen_batch()
@@ -293,6 +293,57 @@ except:
     print >> sys.stderr, "LMDB Loading won't be available"
 
 
+try:
+    import rocksdb
+    
+    # Lmdb loader class
+    class RocksLoader(DataLoader):
+        def __init__(self, **kwargs):
+            # Open the databse
+            kwargs['dbtype'] = 'float' if 'dbtype' not in kwargs else kwargs['dbtype']
+
+            self.dbname = kwargs['file_path']
+            self.max_key_size = kwargs['max_key_size']
+            self.dbtype = kwargs['dbtype']
+            self.itr_size = kwargs['iterator_size']
+            self.db = rocksdb.RocksStore(self.dbname, max_key_size=self.max_key_size, dtype=self.dbtype)
+            self.itr = self.db.iterate(self.itr_size)
+
+            super(RocksLoader, self).__init__(**kwargs)
+
+
+        # Returns an image from the database
+        def get_one(self):
+            # Next item
+            return next(self.itr)
+
+        # Generates a batch
+        def gen_batch(self):
+            pairs = [self.get_one() for i in range(self.batch_size)]
+            images, labels = zip(*pairs)
+            images = np.asarray(images)
+            labels = np.reshape(np.asarray(labels), (-1, 1))
+
+            return images, labels
+
+        # Closes the database
+        def close(self):
+            super(RocksLoader, self).close()
+            self.itr.close()
+            self.db.close()
+            
+            return self
+
+        def reset(self):
+            self.itr = self.db.iterate(self.itr_size)
+
+        def __len__(self):
+            return 0
+except Exception as e:
+    print >> sys.stderr, "RocksDB Loading won't be available"
+    raise e
+    
+    
 # Merges two dicts into a single one
 def merge_two_dicts(x, y):
     '''Given two dicts, merge them into a new dict as a shallow copy.'''
