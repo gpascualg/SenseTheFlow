@@ -141,7 +141,7 @@ class TextLoader(DataLoader):
 
         # Split paths and classes/labels
         paths, labels = zip(*pairs)
-        
+
         self.image_filter = None
         if 'image_filter' in kwargs:
             self.image_filter = kwargs['image_filter']
@@ -162,18 +162,18 @@ class TextLoader(DataLoader):
     def gen_batch(self):
         images = []
         labels = []
-        
+
         while len(images) < self.batch_size:
             try:
                 label = next(self.labels)
                 image = self.process_image(misc.imread(self.data_path + next(self.paths)))
             except:
                 continue
-                
+
             if self.image_filter is None or self.image_filter(image):
                 images.append(image)
                 labels.append(label)
-          
+
         return np.asarray(images), np.reshape(np.asarray(labels), (-1, 1))
 
     # Restart
@@ -289,13 +289,14 @@ try:
 
         def __len__(self):
             return self.num_items
+
 except:
     print >> sys.stderr, "LMDB Loading won't be available"
 
 
 try:
     import rocksdb
-    
+
     # Lmdb loader class
     class RocksLoader(DataLoader):
         def __init__(self, **kwargs):
@@ -315,7 +316,9 @@ try:
         # Returns an image from the database
         def get_one(self):
             # Next item
-            return next(self.itr)
+            img, label = next(self.itr)
+            img = self.process_image(img)
+            return img, label
 
         # Generates a batch
         def gen_batch(self):
@@ -331,7 +334,7 @@ try:
             super(RocksLoader, self).close()
             self.itr.close()
             self.db.close()
-            
+
             return self
 
         def reset(self):
@@ -339,11 +342,12 @@ try:
 
         def __len__(self):
             return 0
+
 except Exception as e:
     print >> sys.stderr, "RocksDB Loading won't be available"
     raise e
-    
-    
+
+
 # Merges two dicts into a single one
 def merge_two_dicts(x, y):
     '''Given two dicts, merge them into a new dict as a shallow copy.'''
