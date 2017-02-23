@@ -1,0 +1,8 @@
+echo "STOP"
+sudo docker stop deepstack
+echo "RM"
+sudo docker rm deepstack
+echo "RUN"
+sudo nvidia-docker run --name deepstack -t -p 8889:8888 -v /home/deep/docker/notebooks:/notebooks -v /home/deep/dades:/data sensetheflow/deepstack
+# -i, removed
+echo "DONE"
