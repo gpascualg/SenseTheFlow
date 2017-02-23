@@ -5,15 +5,15 @@ MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 # Update + dependencies #
 #########################
 RUN apt-get update && \
-	apt-get install -y axel bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
+	apt-get install -y axel curl bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
 		openjdk-8-jdk-headless libsnappy-dev libhdf5-serial-dev libatlas-base-dev liblmdb-dev cmake \
 		autoconf protobuf-compiler && \
 	apt-get install --no-install-recommends -y libboost-all-dev
 
 # Get anaconda #
 ################
-RUN axel -a -n 10 https://repo.continuum.io/archive/Anaconda2-4.1.1-Linux-x86_64.sh
-RUN bash Anaconda2-4.1.1-Linux-x86_64.sh -b -p /opt/anaconda
+RUN curl -O -L https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh
+RUN bash Anaconda2-4.2.0-Linux-x86_64.sh -b -p /opt/anaconda
 
 ## Export path
 ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
@@ -21,52 +21,35 @@ ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 ## Configure anaconda
 EXPOSE 8888
-RUN jupyter-notebook --generate-config --config=/etc/jupyter-notebook.py
-
-RUN sed -i \
-        -e "s/^# c.NotebookApp.ip = 'localhost'$/c.NotebookApp.ip = '0.0.0.0'/" \
-        -e "s/^# c.NotebookApp.port = 8888$/c.NotebookApp.port = 8888/" \
-        -e "s/^# c.NotebookApp.open_browser = True$/c.NotebookApp.open_browser = False/" \
-        -e "s/^# c.IPKernelApp.matplotlib = None$/c.IPKernelApp.matplotlib = 'inline'/" \
-	-e "s/^# c.NotebookApp.password = u''$/c.NotebookApp.password = u'sha1:f2ae78d41d20:04b2337748b6666b5a594cc34d84b06ed5e45c67'/" \
-        -e "s/^# c.IPKernelApp.extensions = \[\]$/c.IPKernelApp.extensions = ['version_information']/" \
-        /etc/jupyter-notebook.py
 
 ## Update conda
-RUN conda install anaconda python=2.7 -y
-RUN conda install pip -y
+RUN conda install anaconda python=2.7 pip -y
 
 
 # Get CUDNN 5 #
 ###############
 ENV CUDNN_VERSION 5
 LABEL com.nvidia.cudnn.version="5"
-ENV CUDNN_DOWNLOAD_SUM a87cb2df2e5e7cc0a05e266734e679ee1a2fadad6f06af82a76ed81a23b102c8
-RUN curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v5.1/cudnn-8.0-linux-x64-v5.1.tgz -O && \
+RUN CUDNN_DOWNLOAD_SUM=c10719b36f2dd6e9ddc63e3189affaa1a94d7d027e63b71c3f64d449ab0645ce && \
+    curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v5.1/cudnn-8.0-linux-x64-v5.1.tgz -O && \
     echo "$CUDNN_DOWNLOAD_SUM  cudnn-8.0-linux-x64-v5.1.tgz" | sha256sum -c --strict - && \
     tar -xzf cudnn-8.0-linux-x64-v5.1.tgz -C /usr/local && \
     rm cudnn-8.0-linux-x64-v5.1.tgz && \
     ldconfig
 
 
-# Update CUDA Thrust (rc 8.0 issue) #
-#####################################
-RUN git clone https://github.com/thrust/thrust.git
-RUN cp -R thrust/thrust/* /usr/local/cuda/include/thrust/
-
-
 # Get Bazel #
 #############
-RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.3.1/bazel-0.3.1-installer-linux-x86_64.sh
-RUN chmod +x bazel-0.3.1-installer-linux-x86_64.sh
-RUN ./bazel-0.3.1-installer-linux-x86_64.sh --user
+RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.4.4/bazel-0.4.4-installer-linux-x86_64.sh
+RUN chmod +x bazel-0.4.4-installer-linux-x86_64.sh
+RUN ./bazel-0.4.4-installer-linux-x86_64.sh --user
 
 
 # Get tensorflow #
 ##################
 RUN git clone https://github.com/tensorflow/tensorflow
 WORKDIR tensorflow
-RUN git checkout v0.10.0
+RUN git checkout v1.0.0-rc2
 
 ## Hack to make tensorflow build process use non-standard python location
 RUN sed -i \
@@ -76,15 +59,22 @@ RUN sed -i \
 ## Setup bazel configuration variables
 ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python
 ENV TF_NEED_CUDA=1
+ENV TD_NEED_OPENCL=0
+ENV TF_NEED_JEMALLOC=1
+ENV TF_NEED_HDFS=0
+ENV TF_ENABLE_XLA=1
 ENV TF_NEED_GCP=0
 ENV TF_CUDA_VERSION=8.0
 ENV TF_CUDNN_VERSION=5
+RUN chmod +x configure
+#RUN echo -e "#!/bin/bash\necho OOOOH\n$(cat configure)" > configure
+RUN sed -i -e '3,4d' configure
 RUN ./configure
 
 ## Build and install
 RUN bazel build -s  -c opt --config=cuda --verbose_failures //tensorflow/tools/pip_package:build_pip_package
 RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
-RUN pip install /tmp/tensorflow_pkg/tensorflow-0.10.0-py2-none-any.whl
+RUN pip install /tmp/tensorflow_pkg/tensorflow-1.0.0rc2-cp27-cp27mu-linux_x86_64.whl
 
 ## Back to root
 WORKDIR ..
@@ -158,6 +148,35 @@ VOLUME ["/data"]
 
 ENV PYTHONPATH=/caffe/python:$PYTHONPATH
 
+RUN apt-get install -y libsm6 libxrender1 libfontconfig1
+RUN echo $LD_LIBRARY_PATH
+RUN apt-get install -y libsm6 libxrender1 libfontconfig1
+
+# Configure jupyter at startup
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+RUN echo "#!/bin/bash\n\
+echo 'Generating config'\n\
+jupyter-notebook --generate-config --config=/etc/jupyter-notebook.py\n\
+echo 'Replacing config with password'\n\
+sed -i \ \n\
+        -e \"s/^# *c.NotebookApp.ip = 'localhost'$/c.NotebookApp.ip = '0.0.0.0'/\" \ \n\
+        -e \"s/^# *c.NotebookApp.port = 8888$/c.NotebookApp.port = 8888/\" \ \n\
+        -e \"s/^# *c.NotebookApp.open_browser = True$/c.NotebookApp.open_browser = False/\" \ \n\
+        -e \"s/^# *c.IPKernelApp.matplotlib = None$/c.IPKernelApp.matplotlib = 'inline'/\" \ \n\
+        -e \"s/^# *c.NotebookApp.password = u''$/c.NotebookApp.password = u'\$JUPYTER_PASSWORD'/\" \ \n\
+        -e \"s/^# *c.IPKernelApp.extensions = \[\]$/c.IPKernelApp.extensions = ['version_information']/\" \ \n\
+        /etc/jupyter-notebook.py \n\
+# Hackity hack to make anaconda behave
+rm /opt/anaconda/lib/libstdc++.so.6 \n\
+ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/anaconda/lib/libstdc++.so.6 \n\
+# Start \n\
+jupyter-notebook /notebooks --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
+RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
+RUN chmod +x /opt/anaconda/run_jupyter.sh
+
+## LAST TIME ADDITIONS
+RUN pip install seaborn
+
 # Entry point #
 ###############
-ENTRYPOINT jupyter-notebook /notebooks --config=/etc/jupyter-notebook.py
+ENTRYPOINT ["/opt/anaconda/run_jupyter.sh"]
