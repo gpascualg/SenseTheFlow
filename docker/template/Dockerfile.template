@@ -3,17 +3,23 @@ MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 
 # Update + dependencies #
 #########################
-RUN apt-get update && \
-	apt-get install -y axel curl bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
-		openjdk-8-jdk-headless libsnappy-dev libhdf5-serial-dev libatlas-base-dev liblmdb-dev cmake \
-		autoconf protobuf-compiler libsm6 libxrender1 libfontconfig1 && \
-	apt-get install --no-install-recommends -y libboost-all-dev
+RUN apt-get update && apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim \
+		libxrender1 libfontconfig1 git
 
+[[if build_tensorflow]]
+RUN apt-get install -y swig pkg-config openjdk-8-jdk-headless autoconf
+[[endif]]
+[[if build_caffe]]
+RUN apt-get install -y swig pkg-config libsnappy-dev libhdf5-serial-dev libatlas-base-dev liblmdb-dev \
+                autoconf protobuf-compiler libsm6  && \
+        apt-get install --no-install-recommends -y libboost-all-dev
+[[endif]]
 
 # Get anaconda #
 ################
 RUN curl -O -L https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh
 RUN bash Anaconda2-4.2.0-Linux-x86_64.sh -b -p /opt/anaconda
+RUN rm Anaconda2-4.2.0-Linux-x86_64.sh
 
 ## Export path
 ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
@@ -169,9 +175,19 @@ sed -i \ \n\
         -e \"s/^# *c.NotebookApp.password = u''$/c.NotebookApp.password = u'\$JUPYTER_PASSWORD'/\" \ \n\
         -e \"s/^# *c.IPKernelApp.extensions = \[\]$/c.IPKernelApp.extensions = ['version_information']/\" \ \n\
         /etc/jupyter-notebook.py \n\
-# Hackity hack to make anaconda behave
+# Hackity hack to make anaconda behave \n\
 rm /opt/anaconda/lib/libstdc++.so.6 \n\
 ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/anaconda/lib/libstdc++.so.6 \n\
+if [ -n \"\$ENABLE_GOMP_HACK\" ] \n\
+then \n\
+    rm /opt/anaconda/lib/libgomp.so.1 \n\
+    ln -s $(find /usr/lib -name libgomp.so.1) /opt/anaconda/lib/libgomp.so.1 \n\
+fi \n\
+# Fetch latest SenseTheFlow \n\
+if [ -n \"\${FETCH_SENSETHEFLOW}\" ] \n\
+then \n\
+    git clone https://github.com/gpascualg/SenseTheFlow.git /notebooks/SenseTheFlow \n\
+fi \n\
 # Start \n\
 jupyter-notebook /notebooks --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh

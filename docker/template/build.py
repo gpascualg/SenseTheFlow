@@ -17,6 +17,7 @@ def subprocess_cmd(command, cin=None):
 def main():
     parser = argparse.ArgumentParser(description='Build options.')
     parser.add_argument('--tag', required=True)
+    parser.add_argument('--dir', default='.')
     parser.add_argument('--tensorflow', action='store_true')
     parser.add_argument('--tensorflow-version', default='r1.0')
     parser.add_argument('--caffe', action='store_true')
@@ -37,12 +38,15 @@ def main():
 
     write_stack = [(None, True)]
 
-    with open('Dockerfile.template', 'r') as fin:
-        with open('Dockerfile', 'w') as fout:
+    with open(os.path.join(args.dir, 'Dockerfile.template'), 'r') as fin:
+        with open(os.path.join(args.dir, 'Dockerfile'), 'w') as fout:
             for line in fin:
                 match = re.match(r"\[\[if (\w+)\]\]", line)
                 if match is not None:
-                    write_stack.append([match.group(1), data[match.group(1)]])
+                    if not write_stack[-1][1]:
+                        write_stack.append([match.group(1), None])
+                    else:
+                        write_stack.append([match.group(1), data[match.group(1)]])
                     continue
 
                 match = re.match(r"\[\[endif\]\]", line)
@@ -52,10 +56,11 @@ def main():
 
                 match = re.match(r"\[\[else\]\]", line)
                 if match is not None:
-                    write_stack[-1][1] = not write_stack[-1][1]
+                    if write_stack[-1][1] is not None:
+                        write_stack[-1][1] = not write_stack[-1][1]
                     continue
 
-                if not write_stack[-1][1]:
+                if write_stack[-1][1] is None or not write_stack[-1][1]:
                     continue
 
                 match = re.match(r".*?({{(\w+)}}).*?", line)
@@ -64,7 +69,7 @@ def main():
 
                 fout.write(line)
 
-    if subprocess.call(['docker', 'build', '-t', args.tag, '.']) == 0:
+    if subprocess.call(['docker', 'build', '-t', args.tag, args.dir]) == 0:
         print('')
         print("----- DONE -----")
 

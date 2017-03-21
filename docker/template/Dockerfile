@@ -1,19 +1,17 @@
-FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04
+FROM ubuntu:16.04
 MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 
 # Update + dependencies #
 #########################
-RUN apt-get update && \
-	apt-get install -y axel curl bzip2 software-properties-common git swig pkg-config zip g++ zlib1g-dev unzip \
-		openjdk-8-jdk-headless libsnappy-dev libhdf5-serial-dev libatlas-base-dev liblmdb-dev cmake \
-		autoconf protobuf-compiler libsm6 libxrender1 libfontconfig1 && \
-	apt-get install --no-install-recommends -y libboost-all-dev
+RUN apt-get update && apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim \
+		libxrender1 libfontconfig1 git
 
 
 # Get anaconda #
 ################
 RUN curl -O -L https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh
 RUN bash Anaconda2-4.2.0-Linux-x86_64.sh -b -p /opt/anaconda
+RUN rm Anaconda2-4.2.0-Linux-x86_64.sh
 
 ## Export path
 ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
@@ -38,107 +36,7 @@ ENV PYTHONPATH=/notebooks
 
 
 
-# Get Bazel #
-#############
-RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.4.4/bazel-0.4.4-installer-linux-x86_64.sh
-RUN chmod +x bazel-0.4.4-installer-linux-x86_64.sh
-RUN ./bazel-0.4.4-installer-linux-x86_64.sh --user
 
-
-# Get tensorflow #
-##################
-RUN git clone https://github.com/tensorflow/tensorflow
-WORKDIR tensorflow
-RUN git checkout r1.0
-
-## Hack to make tensorflow build process use non-standard python location
-RUN sed -i \
-	-e "s/^#!\/usr\/bin\/env python$/#!\/opt\/anaconda\/bin\/python/" \
-	third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
-
-## Setup bazel configuration variables
-ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python
-ENV TF_NEED_CUDA=1
-ENV TD_NEED_OPENCL=1
-ENV TF_NEED_JEMALLOC=1
-ENV TF_NEED_HDFS=0
-ENV TF_ENABLE_XLA=1
-ENV TF_NEED_GCP=0
-ENV TF_CUDA_VERSION=8.0
-ENV TF_CUDNN_VERSION=5
-RUN chmod +x configure
-RUN sed -i -e '3,4d' configure
-RUN ./configure
-
-## Build and install
-RUN bazel build -s  --config=opt --config=cuda --verbose_failures //tensorflow/tools/pip_package:build_pip_package
-
-RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
-RUN pip install /tmp/tensorflow_pkg/$(ls /tmp/tensorflow_pkg)
-
-## Back to root
-WORKDIR ..
-
-
-
-
-
-# Get Caffe dependencies #
-##########################
-
-## Opencv
-RUN git clone https://github.com/opencv/opencv.git
-RUN mkdir opencv/build
-WORKDIR opencv/build
-RUN cmake  -DCMAKE_BUILD_TYPE=RELEASE \
-		-DCMAKE_INSTALL_PREFIX=/usr/local \
-		-DBUILD_TIFF=ON -DPYTHON_EXECUTABLE=/opt/anaconda/bin/python \
-		-DPYTHON_INCLUDE_DIRS=/opt/anaconda/include/python2.7 \
-		-DPYTHON_LIBRARY=/opt/anaconda/lib/libpython2.7.so .. && \
-	make -j8 install
-WORKDIR ../..
-
-## Google flags
-RUN git clone https://github.com/gflags/gflags.git
-RUN mkdir gflags/build
-WORKDIR gflags/build
-RUN cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON .. && make -j8 install
-WORKDIR ../..
-
-## Google log
-RUN git clone https://github.com/google/glog.git
-WORKDIR glog
-RUN apt-get install -y libtool
-RUN autoreconf --force --install && \
-	./configure --prefix=/usr/local && \
-	echo "#define GOOGLE_GLOG_DLL_DECL " >> src/config.h && \
-	make -j8 install
-WORKDIR ..
-
-## Protobuf
-RUN git clone https://github.com/google/protobuf.git
-WORKDIR protobuf
-RUN ./autogen.sh && ./configure --prefix=/usr/local && make -j8 install
-WORKDIR ..
-
-## Leveldb
-RUN git clone https://github.com/google/leveldb.git
-WORKDIR leveldb
-RUN make -j8
-RUN cp out-shared/*.so* /usr/local/lib/ && cp out-static/*.a* /usr/local/lib/ && cp -R include/* /usr/local/include
-WORKDIR ..
-
-## Caffe
-RUN git clone https://github.com/BVLC/caffe.git
-RUN mkdir caffe/build
-WORKDIR caffe/build
-RUN cmake .. && make -j8
-
-## Opencv python wrappers
-RUN conda install -y opencv
-
-## ENV
-ENV PYTHONPATH=/caffe/python:$PYTHONPATH
 
 
 
@@ -161,9 +59,19 @@ sed -i \ \n\
         -e \"s/^# *c.NotebookApp.password = u''$/c.NotebookApp.password = u'\$JUPYTER_PASSWORD'/\" \ \n\
         -e \"s/^# *c.IPKernelApp.extensions = \[\]$/c.IPKernelApp.extensions = ['version_information']/\" \ \n\
         /etc/jupyter-notebook.py \n\
-# Hackity hack to make anaconda behave
+# Hackity hack to make anaconda behave \n\
 rm /opt/anaconda/lib/libstdc++.so.6 \n\
 ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/anaconda/lib/libstdc++.so.6 \n\
+if [ -n \"\$ENABLE_GOMP_HACK\" ] \n\
+then \n\
+    rm /opt/anaconda/lib/libgomp.so.1 \n\
+    ln -s $(find /usr/lib -name libgomp.so.1) /opt/anaconda/lib/libgomp.so.1 \n\
+fi \n\
+# Fetch latest SenseTheFlow \n\
+if [ -n \"\${FETCH_SENSETHEFLOW}\" ] \n\
+then \n\
+    git clone https://github.com/gpascualg/SenseTheFlow.git /notebooks/SenseTheFlow \n\
+fi \n\
 # Start \n\
 jupyter-notebook /notebooks --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
