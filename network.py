@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.python import control_flow_ops
 
 # Default values for function-based layers
 class Defaults(object):

@@ -61,7 +61,7 @@ class RocksStore(object):
         key_str = str(self.last_key).zfill(self.max_key_size)
         contiguous = data.astype(self.dtype).copy(order='C')
         
-        result = self.values.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.POINTER(self.ctype)), 
+        result = self.values.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
                                    key_len=self.max_key_size, value_len=data.size * self.dsize)
     
         label = str(label)
