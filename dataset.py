@@ -12,13 +12,14 @@ from cv2 import resize
 
 # Base class to load data in batches
 class DataLoader(object):
-    def __init__(self, file_path, data_path='./', mean=None, resize=None, crop=None,
+    def __init__(self, file_path, data_path='./', mean=None, resize=None, crop=None,random_crop = None,
                  scale=1.0, batch_size=1, prefetch=0, start_prefetch=True, **kwargs):
         self.file_path = file_path
         self.data_path = data_path
         self.mean = mean
         self.resize = resize
         self.crop = crop
+        self.random_crop = random_crop
         self.scale = scale
         self.current = 0
 
@@ -27,7 +28,7 @@ class DataLoader(object):
         self.prefetch_started = False
         self.prefetch_stop = False
         self.prefetch_queue = Queue(maxsize=prefetch)
-
+        
         if start_prefetch:
             self.start_prefetch()
 
@@ -107,12 +108,20 @@ class DataLoader(object):
         # Resize if necessary
         if self.resize is not None:
             img = resize(img, (self.resize[0], self.resize[1]))
-
+        
+         # Random Crop if necessary
+        if self.random_crop is not None and self.crop is not None:
+            h, w = img.shape[0], img.shape[1]
+            crop_height, crop_width = ((h-self.crop[0]), (w-self.crop[1]))
+            crop_height, crop_width = random.randint(0, crop_height), random.randint(0, crop_width)
+            img = img[crop_height:crop_height+self.crop[0], crop_width:crop_width+self.crop[1], ...]
+            
         # Crop if necessary
-        if self.crop is not None:
+        if self.crop is not None and self.random_crop is None:
             h, w = img.shape[0], img.shape[1]
             crop_height, crop_width = ((h-self.crop[0])/2, (w-self.crop[1])/2)
             img = img[crop_height:crop_height+self.crop[0], crop_width:crop_width+self.crop[1], ...]
+            
 
         # Substract mean if necessary
         if self.mean is not None:
