@@ -12,7 +12,7 @@ from cv2 import resize
 
 # Base class to load data in batches
 class DataLoader(object):
-    def __init__(self, file_path, data_path='./', mean=None, resize=None, crop=None,random_crop = None,
+    def __init__(self, file_path, data_path='./', mean=None, resize=None, crop=None, random_crop = None, no_deformation = False,
                  scale=1.0, batch_size=1, prefetch=0, start_prefetch=True, **kwargs):
         self.file_path = file_path
         self.data_path = data_path
@@ -21,6 +21,7 @@ class DataLoader(object):
         self.crop = crop
         self.random_crop = random_crop
         self.scale = scale
+        self.no_deformation = no_deformation
         self.current = 0
 
         self.batch_size = batch_size
@@ -104,12 +105,26 @@ class DataLoader(object):
     def process_image(self, img):
         # Convert to float and scale
         img = img.astype(np.float32) * self.scale
-
+        
+        # Take image within deformation in one axis
+        if self.no_deformation:
+            width, height = img.shape[:2]
+            #if width != 256 or height != 256:
+            #    print width, height
+            
+            img_width = resize(img, (width, width))
+            img_width = resize(img_width, (128, 128))
+            
+            img_height = resize(img, (height, height))
+            img_height = resize(img_height, (128, 128))
+            
+            return img_width, img_height
+            
         # Resize if necessary
         if self.resize is not None:
             img = resize(img, (self.resize[0], self.resize[1]))
         
-         # Random Crop if necessary
+        # Random Crop if necessary
         if self.random_crop is not None and self.crop is not None:
             h, w = img.shape[0], img.shape[1]
             crop_height, crop_width = ((h-self.crop[0]), (w-self.crop[1]))
@@ -126,7 +141,8 @@ class DataLoader(object):
         # Substract mean if necessary
         if self.mean is not None:
             img -= self.mean
-
+        
+        if 'no_deformation' : True
         return img
 
     def reset(self):
