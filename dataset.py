@@ -9,6 +9,7 @@ from Queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
 from cv2 import resize
+import cv2
 
 # Base class to load data in batches
 class DataLoader(object):
@@ -104,19 +105,19 @@ class DataLoader(object):
     # Processes an image
     def process_image(self, img):
         # Convert to float and scale
-        img = img.astype(np.float32) * self.scale
-        
+        #img = img.astype(np.float32) * self.scale
         # Take image within deformation in one axis
         if self.no_deformation:
             width, height = img.shape[:2]
             #if width != 256 or height != 256:
             #    print width, height
             
-            img_width = resize(img, (width, width))
-            img_width = resize(img_width, (128, 128))
+            img_width = cv2.resize(img, (width, width))
+            img_width = cv2.resize(img_width, (64, 64))
             
-            img_height = resize(img, (height, height))
-            img_height = resize(img_height, (128, 128))
+            img_height = cv2.resize(img, (height, height))
+            img_height = cv2.resize(img_height, (64, 64))
+            
             
             return img_width, img_height
             
@@ -142,7 +143,6 @@ class DataLoader(object):
         if self.mean is not None:
             img -= self.mean
         
-        if 'no_deformation' : True
         return img
 
     def reset(self):
@@ -159,14 +159,27 @@ class DataLoader(object):
 class TextLoader(DataLoader):
     def __init__(self, shuffle=True, **kwargs):
         super(TextLoader, self).__init__(**kwargs)
-
+        
+        
         # Open file and read all lines
         lines = open(self.file_path).readlines()
+        
+        """
+        for i in range(len(lines)):
+            num = lines[i][13:-7]
+            len_num = len(num)
+            if len_num > 5:
+                folder = num[:-5] + '00000_' + num[:-5]+'99999/'
+            else:
+                folder = '0_99999/'
+            lines[i] = 'database_s21/'+folder+num+'.jpg' + lines[i][-3:]
+        """    
         pairs = [line.split() for line in lines]
 
         # Split paths and classes/labels
         paths, labels = zip(*pairs)
-
+        
+                
         self.image_filter = None
         if 'image_filter' in kwargs:
             self.image_filter = kwargs['image_filter']
