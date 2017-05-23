@@ -5,7 +5,7 @@ import time
 import random
 import numpy as np
 from tqdm import tqdm
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
 from cv2 import resize
@@ -47,7 +47,7 @@ class DataLoader(object):
     def wait_prefetch(self):
         if self.prefetch > 0:
             last = 0
-            print >> sys.stdout, "Prefetching data"
+            print("Prefetching data", file=sys.stdout)
 
             # Show loading bar
             with tqdm(total=self.prefetch) as pbar:
@@ -96,7 +96,7 @@ class DataLoader(object):
     # Reorders the list
     def shuffle(self, a, b):
         if len(a) != len(b):
-            print >> sys.stderr, "Unmatching sets"
+            print("Unmatching sets", file=sys.stdout)
 
         combined = zip(a, b)
         random.shuffle(combined)
@@ -329,7 +329,7 @@ try:
             return self.num_items
 
 except:
-    print >> sys.stderr, "LMDB Loading won't be available"
+    print("LMDB Loading won't be available", file=sys.stdout)
 
 
 try:
@@ -382,7 +382,7 @@ try:
             return 0
 
 except Exception as e:
-    print >> sys.stderr, "RocksDB Loading won't be available"
+    print("RocksDB Loading won't be available", file=sys.stderr)
     raise e
 
 

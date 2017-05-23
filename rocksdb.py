@@ -164,8 +164,8 @@ class RocksDB(object):
         
         # Buffer, writing and so on
         dll.rocksdb_options_set_max_open_files(opts, 512)
-        dll.rocksdb_options_set_write_buffer_size(opts, 512 * 1024L * 1024)
-        dll.rocksdb_options_set_target_file_size_base(opts, 512 * 1024L * 1024)
+        dll.rocksdb_options_set_write_buffer_size(opts, 512 * 1024 * 1024)
+        dll.rocksdb_options_set_target_file_size_base(opts, 512 * 1024 * 1024)
         dll.rocksdb_options_set_max_write_buffer_number(opts, 4)
         dll.rocksdb_options_increase_parallelism(opts, 4)
 
@@ -220,7 +220,7 @@ class RocksDLL(object):
     @staticmethod
     def get():
         if RocksDLL.rocksdll is None:
-            RocksDLL.rocksdll = ctypes.cdll.LoadLibrary('/home/deep/.dependencies/rocksdb/librocksdb.so')
+            RocksDLL.rocksdll = ctypes.cdll.LoadLibrary('librocksdb.so')
 
             # Some setup
             dll = RocksDLL.rocksdll
