@@ -30,7 +30,7 @@ class Layer(object):
             activation = None if self.activation is None else self.activation.__name__
             info_a = "{}/{}:".format(scope.name, name)
             info_b = "[Trainable: {}\tActivation: {}]".format(self.trainable, activation)
-            print info_a + " " * (80 - len(info_a)) + info_b
+            print(info_a + " " * (80 - len(info_a)) + info_b)
 
         # Create the variable
         var = tf.get_variable(name, shape, trainable=self.trainable, initializer=initializer, dtype=np.float32)
