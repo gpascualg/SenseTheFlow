@@ -1,0 +1,1372 @@
+Sending build context to Docker daemon 23.04 kB
+Step 1/59 : FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04
+ ---> ead5eb2dd92f
+Step 2/59 : MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
+ ---> Using cache
+ ---> 5687e19b4107
+Step 3/59 : RUN apt-get update && apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim 		libxrender1 libfontconfig1 git
+ ---> Using cache
+ ---> 9a2062043017
+Step 4/59 : RUN apt-get install -y swig pkg-config openjdk-8-jdk-headless autoconf
+ ---> Using cache
+ ---> 475488130622
+Step 5/59 : RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.3.1-Linux-x86_64.sh
+ ---> Using cache
+ ---> fe72dc0a6b18
+Step 6/59 : RUN bash Anaconda3-4.3.1-Linux-x86_64.sh -b -p /opt/anaconda
+ ---> Using cache
+ ---> 20a4dda37006
+Step 7/59 : RUN rm Anaconda3-4.3.1-Linux-x86_64.sh
+ ---> Using cache
+ ---> 245c1dccd655
+Step 8/59 : ENV PATH /opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
+ ---> Using cache
+ ---> fa277119371d
+Step 9/59 : ENV LD_LIBRARY_PATH /usr/local/lib:$LD_LIBRARY_PATH
+ ---> Using cache
+ ---> 79e8c30c2e86
+Step 10/59 : EXPOSE 8888
+ ---> Using cache
+ ---> 3ef97390f1ea
+Step 11/59 : RUN conda install anaconda python pip -y
+ ---> Using cache
+ ---> 6a92853cebbc
+Step 12/59 : RUN mkdir /notebooks
+ ---> Using cache
+ ---> bca4f229ffaa
+Step 13/59 : VOLUME /notebooks
+ ---> Using cache
+ ---> 2c54e96198cc
+Step 14/59 : RUN mkdir /data
+ ---> Using cache
+ ---> 24b87c9f0097
+Step 15/59 : VOLUME /data
+ ---> Using cache
+ ---> b6c0ad3fba9f
+Step 16/59 : RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.4.5/bazel-0.4.5-installer-linux-x86_64.sh
+ ---> Using cache
+ ---> ee90aca1e1cd
+Step 17/59 : RUN chmod +x bazel-0.4.5-installer-linux-x86_64.sh
+ ---> Using cache
+ ---> 2696c735ae25
+Step 18/59 : RUN ./bazel-0.4.5-installer-linux-x86_64.sh --user
+ ---> Using cache
+ ---> 75560a9bd632
+Step 19/59 : RUN git clone https://github.com/tensorflow/tensorflow
+ ---> Using cache
+ ---> c4f742ba8bc9
+Step 20/59 : WORKDIR tensorflow
+ ---> Using cache
+ ---> 8d8730d1ee4b
+Step 21/59 : RUN git checkout r1.2
+ ---> Using cache
+ ---> f3ea7c052258
+Step 22/59 : RUN sed -i 	-e "s/^#!\/usr\/bin\/env python$/#!\/opt\/anaconda\/bin\/python/" 	third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+ ---> Using cache
+ ---> 848afa3bc3b1
+Step 23/59 : RUN apt-get install -y locate build-essential
+ ---> Using cache
+ ---> d65b1a1ad136
+Step 24/59 : ENV PYTHON_BIN_PATH /opt/anaconda/bin/python
+ ---> Using cache
+ ---> 63dd48d89a0e
+Step 25/59 : ENV USE_DEFAULT_PYTHON_LIB_PATH 1
+ ---> Using cache
+ ---> fdc6447d1504
+Step 26/59 : ENV TF_NEED_MKL 1
+ ---> Using cache
+ ---> 4fb46d23885b
+Step 27/59 : ENV TF_DOWNLOAD_MKL 1
+ ---> Using cache
+ ---> ebb20e868258
+Step 28/59 : ENV TF_NEED_CUDA 1
+ ---> Using cache
+ ---> 35512504e00a
+Step 29/59 : ENV TF_NEED_OPENCL 0
+ ---> Using cache
+ ---> 19b348164d3c
+Step 30/59 : ENV TF_NEED_JEMALLOC 1
+ ---> Using cache
+ ---> 3b0db8090052
+Step 31/59 : ENV TF_NEED_HDFS 0
+ ---> Using cache
+ ---> 1e37779813c1
+Step 32/59 : ENV TF_ENABLE_XLA 1
+ ---> Using cache
+ ---> 67d435372099
+Step 33/59 : ENV TF_CUDA_CLANG 0
+ ---> Using cache
+ ---> 715c625d8f18
+Step 34/59 : ENV TF_NEED_GCP 0
+ ---> Using cache
+ ---> d8c88f580ee9
+Step 35/59 : ENV TF_CUDA_VERSION 8.0
+ ---> Using cache
+ ---> 3948e61cbeb9
+Step 36/59 : ENV TF_CUDNN_VERSION 5
+ ---> Using cache
+ ---> bca136f17c72
+Step 37/59 : ENV TF_CUDA_COMPUTE_CAPABILITIES 3.5,5.2,6.1
+ ---> Using cache
+ ---> e6d73408b8b3
+Step 38/59 : RUN chmod +x configure
+ ---> Using cache
+ ---> a9d7c6485a05
+Step 39/59 : RUN sed -i -e '3,4d' configure
+ ---> Using cache
+ ---> cc23e4bb1c42
+Step 40/59 : RUN ./configure
+ ---> Using cache
+ ---> 0ae661cdc037
+Step 41/59 : RUN bazel build -s  --config=opt --config=cuda --verbose_failures //tensorflow/tools/pip_package:build_pip_package
+ ---> Using cache
+ ---> ce337f0873a9
+Step 42/59 : RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
+ ---> Using cache
+ ---> 4da12af56775
+Step 43/59 : RUN pip install /tmp/tensorflow_pkg/$(ls /tmp/tensorflow_pkg)
+ ---> Using cache
+ ---> 3f2d41a06fb3
+Step 44/59 : WORKDIR ..
+ ---> Using cache
+ ---> 98e905b3bee3
+Step 45/59 : RUN git clone https://github.com/facebook/rocksdb.git
+ ---> Using cache
+ ---> ea8e7afdc730
+Step 46/59 : WORKDIR rocksdb
+ ---> Using cache
+ ---> 2cec1508f900
+Step 47/59 : RUN git checkout v5.3.6
+ ---> Using cache
+ ---> d811391c3dea
+Step 48/59 : RUN mkdir build
+ ---> Using cache
+ ---> 546a543e48cf
+Step 49/59 : WORKDIR build
+ ---> Using cache
+ ---> 86572fdcbc36
+Step 50/59 : RUN cmake ..
+ ---> Using cache
+ ---> 05be4d0b2ea9
+Step 51/59 : RUN make -j $(grep -c '^processor' /proc/cpuinfo) && make install
+ ---> Running in d39e049378d0
+Scanning dependencies of target build_version
+[  0%] Building CXX object CMakeFiles/build_version.dir/build_version.cc.o
+Scanning dependencies of target testharness
+Scanning dependencies of target gtest
+[  0%] Building CXX object third-party/gtest-1.7.0/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o
+[  0%] Building CXX object CMakeFiles/testharness.dir/util/testharness.cc.o
+Scanning dependencies of target testutillib
+[  0%] Built target build_version
+[  0%] Building CXX object CMakeFiles/testutillib.dir/util/mock_env.cc.o
+[  0%] Building CXX object CMakeFiles/testutillib.dir/db/db_test_util.cc.o
+[  0%] Building CXX object CMakeFiles/testutillib.dir/util/fault_injection_test_env.cc.o
+[  0%] Building CXX object CMakeFiles/testutillib.dir/table/mock_table.cc.o
+[  0%] Building CXX object CMakeFiles/testutillib.dir/util/thread_status_updater_debug.cc.o
+Scanning dependencies of target rocksdb
+Scanning dependencies of target rocksdb-shared
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/auto_roll_logger.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/column_family.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/builder.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/c.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/compacted_db_impl.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/compaction.cc.o
+[  1%] Building CXX object CMakeFiles/rocksdb.dir/db/compaction_iterator.cc.o
+[  2%] Building CXX object CMakeFiles/rocksdb.dir/db/compaction_job.cc.o
+[  2%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/auto_roll_logger.cc.o
+[  2%] Built target testharness
+[  2%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/builder.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/c.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/column_family.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/compacted_db_impl.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/compaction.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/compaction_picker.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/convenience.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/dbformat.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/db_filesnapshot.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/db_impl.cc.o
+[  3%] Building CXX object CMakeFiles/rocksdb.dir/db/db_impl_debug.cc.o
+[  4%] Building CXX object CMakeFiles/rocksdb.dir/db/db_impl_experimental.cc.o
+[  5%] Linking CXX static library libgtest.a
+[  5%] Built target gtest
+[  5%] Building CXX object CMakeFiles/rocksdb.dir/db/db_impl_readonly.cc.o
+[  5%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/compaction_iterator.cc.o
+[  5%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/compaction_job.cc.o
+[  5%] Building CXX object CMakeFiles/rocksdb.dir/db/db_info_dumper.cc.o
+[  6%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/compaction_picker.cc.o
+[  6%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/convenience.cc.o
+[  6%] Building CXX object CMakeFiles/rocksdb.dir/db/db_iter.cc.o
+[  6%] Building CXX object CMakeFiles/rocksdb.dir/db/event_helpers.cc.o
+[  6%] Building CXX object CMakeFiles/rocksdb.dir/db/external_sst_file_ingestion_job.cc.o
+[  7%] Linking CXX static library libtestutillib.a
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/experimental.cc.o
+[  8%] Built target testutillib
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/filename.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/file_indexer.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/flush_job.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/dbformat.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/flush_scheduler.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/forward_iterator.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_filesnapshot.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/internal_stats.cc.o
+[  8%] Building CXX object CMakeFiles/rocksdb.dir/db/log_writer.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb.dir/db/log_reader.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb.dir/db/managed_iterator.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_impl.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb.dir/db/memtable.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_impl_debug.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb.dir/db/memtable_allocator.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_impl_experimental.cc.o
+[  9%] Building CXX object CMakeFiles/rocksdb.dir/db/memtable_list.cc.o
+[ 10%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_impl_readonly.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/merge_helper.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/merge_operator.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/range_del_aggregator.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/repair.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/snapshot_impl.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/table_cache.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/table_properties_collector.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_info_dumper.cc.o
+[ 11%] Building CXX object CMakeFiles/rocksdb.dir/db/version_builder.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/transaction_log_impl.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/version_edit.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/version_set.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/wal_manager.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/db_iter.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/write_batch.cc.o
+[ 12%] Building CXX object CMakeFiles/rocksdb.dir/db/write_batch_base.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/db/write_controller.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/db/write_thread.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/event_helpers.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/external_sst_file_ingestion_job.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/experimental.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/memtable/hash_cuckoo_rep.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/memtable/hash_linklist_rep.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/memtable/hash_skiplist_rep.cc.o
+[ 13%] Building CXX object CMakeFiles/rocksdb.dir/memtable/skiplistrep.cc.o
+[ 14%] Building CXX object CMakeFiles/rocksdb.dir/memtable/vectorrep.cc.o
+[ 14%] Building CXX object CMakeFiles/rocksdb.dir/port/stack_trace.cc.o
+[ 14%] Building CXX object CMakeFiles/rocksdb.dir/table/adaptive_table_factory.cc.o
+[ 14%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/filename.cc.o
+[ 15%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/file_indexer.cc.o
+[ 15%] Building CXX object CMakeFiles/rocksdb.dir/table/block.cc.o
+[ 15%] Building CXX object CMakeFiles/rocksdb.dir/table/block_based_filter_block.cc.o
+[ 15%] Building CXX object CMakeFiles/rocksdb.dir/table/block_based_table_factory.cc.o
+[ 15%] Building CXX object CMakeFiles/rocksdb.dir/table/block_based_table_builder.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/block_based_table_reader.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/flush_job.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/block_builder.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/flush_scheduler.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/block_prefix_index.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/bloom_block.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/cuckoo_table_builder.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/cuckoo_table_factory.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/forward_iterator.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb.dir/table/cuckoo_table_reader.cc.o
+[ 16%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/internal_stats.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/flush_block_policy.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/format.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/full_filter_block.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/get_context.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/index_builder.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb.dir/table/iterator.cc.o
+[ 17%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/log_reader.cc.o
+[ 18%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/log_writer.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/merging_iterator.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/sst_file_writer.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/meta_blocks.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/partitioned_filter_block.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/plain_table_builder.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/managed_iterator.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/plain_table_factory.cc.o
+[ 19%] Building CXX object CMakeFiles/rocksdb.dir/table/plain_table_index.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/table/plain_table_key_coding.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/table/plain_table_reader.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/table/persistent_cache_helper.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/memtable.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/memtable_allocator.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/memtable_list.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/table/table_properties.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/table/two_level_iterator.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/merge_helper.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/tools/sst_dump_tool.cc.o
+[ 20%] Building CXX object CMakeFiles/rocksdb.dir/tools/db_bench_tool.cc.o
+[ 21%] Building CXX object CMakeFiles/rocksdb.dir/tools/dump/db_dump_tool.cc.o
+[ 21%] Building CXX object CMakeFiles/rocksdb.dir/util/arena.cc.o
+[ 21%] Building CXX object CMakeFiles/rocksdb.dir/util/bloom.cc.o
+[ 21%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/merge_operator.cc.o
+[ 21%] Building CXX object CMakeFiles/rocksdb.dir/util/cf_options.cc.o
+[ 22%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/range_del_aggregator.cc.o
+[ 22%] Building CXX object CMakeFiles/rocksdb.dir/util/clock_cache.cc.o
+[ 22%] Building CXX object CMakeFiles/rocksdb.dir/util/coding.cc.o
+[ 22%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/repair.cc.o
+[ 22%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/snapshot_impl.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/compaction_job_stats_impl.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/comparator.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/concurrent_arena.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/crc32c.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/db_options.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/table_properties_collector.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/table_cache.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/delete_scheduler.cc.o
+[ 23%] Building CXX object CMakeFiles/rocksdb.dir/util/dynamic_bloom.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/env.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/env_chroot.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/env_hdfs.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/event_logger.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/file_util.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb.dir/util/file_reader_writer.cc.o
+[ 24%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/transaction_log_impl.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/sst_file_manager_impl.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/filter_policy.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/hash.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/version_builder.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/histogram.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/histogram_windowing.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/instrumented_mutex.cc.o
+[ 25%] Building CXX object CMakeFiles/rocksdb.dir/util/iostats_context.cc.o
+[ 26%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/version_edit.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/util/lru_cache.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/version_set.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/tools/ldb_cmd.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/tools/ldb_tool.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/util/logging.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/util/log_buffer.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/util/memenv.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/wal_manager.cc.o
+[ 27%] Building CXX object CMakeFiles/rocksdb.dir/util/murmurhash.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb.dir/util/options.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb.dir/util/options_helper.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb.dir/util/options_parser.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb.dir/util/options_sanity_check.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/write_batch.cc.o
+[ 28%] Building CXX object CMakeFiles/rocksdb.dir/util/perf_context.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/random.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/perf_level.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/write_batch_base.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/rate_limiter.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/write_controller.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/sharded_cache.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/slice.cc.o
+[ 29%] Building CXX object CMakeFiles/rocksdb.dir/util/statistics.cc.o
+[ 30%] Building CXX object CMakeFiles/rocksdb-shared.dir/db/write_thread.cc.o
+[ 30%] Building CXX object CMakeFiles/rocksdb-shared.dir/memtable/hash_cuckoo_rep.cc.o
+[ 30%] Building CXX object CMakeFiles/rocksdb-shared.dir/memtable/hash_linklist_rep.cc.o
+[ 30%] Building CXX object CMakeFiles/rocksdb.dir/util/status.cc.o
+[ 30%] Building CXX object CMakeFiles/rocksdb.dir/util/status_message.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/string_util.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/sync_point.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb-shared.dir/memtable/hash_skiplist_rep.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/testutil.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/thread_local.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/threadpool_imp.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb-shared.dir/memtable/skiplistrep.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/thread_status_impl.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb.dir/util/thread_status_updater.cc.o
+[ 31%] Building CXX object CMakeFiles/rocksdb-shared.dir/memtable/vectorrep.cc.o
+[ 32%] Building CXX object CMakeFiles/rocksdb.dir/util/thread_status_util.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/adaptive_table_factory.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/port/stack_trace.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_based_filter_block.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_based_table_builder.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb.dir/util/thread_status_util_debug.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_based_table_factory.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb.dir/util/transaction_test_util.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb.dir/util/xxhash.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb.dir/utilities/backupable/backupable_db.cc.o
+[ 33%] Building CXX object CMakeFiles/rocksdb.dir/utilities/blob_db/blob_db.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb.dir/utilities/checkpoint/checkpoint.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_based_table_reader.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb.dir/utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb.dir/utilities/date_tiered/date_tiered_db_impl.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb.dir/utilities/document/document_db.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb.dir/utilities/document/json_document.cc.o
+[ 34%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_builder.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/block_prefix_index.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/bloom_block.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb.dir/utilities/document/json_document_builder.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/cuckoo_table_builder.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/cuckoo_table_factory.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb.dir/utilities/env_mirror.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/cuckoo_table_reader.cc.o
+[ 35%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/flush_block_policy.cc.o
+[ 36%] Building CXX object CMakeFiles/rocksdb.dir/utilities/geodb/geodb_impl.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/format.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/full_filter_block.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/leveldb_options/leveldb_options.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/lua/rocks_lua_compaction_filter.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/memory/memory_util.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/get_context.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/merge_operators/string_append/stringappend.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/merge_operators/put.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb.dir/utilities/merge_operators/string_append/stringappend2.cc.o
+[ 37%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/index_builder.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/merge_operators/max.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/merge_operators/uint64add.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/option_change_migration/option_change_migration.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/iterator.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/options/options_util.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/persistent_cache/block_cache_tier.cc.o
+[ 38%] Building CXX object CMakeFiles/rocksdb.dir/utilities/persistent_cache/block_cache_tier_file.cc.o
+[ 39%] Building CXX object CMakeFiles/rocksdb.dir/utilities/persistent_cache/block_cache_tier_metadata.cc.o
+[ 39%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/merging_iterator.cc.o
+[ 39%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/sst_file_writer.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/meta_blocks.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/partitioned_filter_block.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/persistent_cache/persistent_cache_tier.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/plain_table_builder.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/persistent_cache/volatile_tier_impl.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/redis/redis_lists.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/plain_table_factory.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/simulator_cache/sim_cache.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/plain_table_index.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/spatialdb/spatial_db.cc.o
+[ 40%] Building CXX object CMakeFiles/rocksdb.dir/utilities/table_properties_collectors/compact_on_deletion_collector.cc.o
+[ 41%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/optimistic_transaction_impl.cc.o
+[ 41%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_base.cc.o
+[ 41%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/optimistic_transaction_db_impl.cc.o
+[ 41%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/plain_table_key_coding.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/plain_table_reader.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/persistent_cache_helper.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_impl.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_db_impl.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/table_properties.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_db_mutex_impl.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_lock_mgr.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/table/two_level_iterator.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/tools/sst_dump_tool.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/tools/db_bench_tool.cc.o
+[ 42%] Building CXX object CMakeFiles/rocksdb-shared.dir/tools/dump/db_dump_tool.cc.o
+[ 43%] Building CXX object CMakeFiles/rocksdb.dir/utilities/transactions/transaction_util.cc.o
+[ 43%] Building CXX object CMakeFiles/rocksdb.dir/utilities/ttl/db_ttl_impl.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/arena.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/bloom.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/cf_options.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/clock_cache.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb.dir/utilities/write_batch_with_index/write_batch_with_index.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/coding.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb.dir/utilities/write_batch_with_index/write_batch_with_index_internal.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/compaction_job_stats_impl.cc.o
+[ 44%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/comparator.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/concurrent_arena.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb.dir/utilities/col_buf_encoder.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/crc32c.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/db_options.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb.dir/utilities/col_buf_decoder.cc.o
+[ 45%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/delete_scheduler.cc.o
+[ 46%] Building CXX object CMakeFiles/rocksdb.dir/utilities/column_aware_encoding_util.cc.o
+[ 46%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/dynamic_bloom.cc.o
+[ 46%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/env.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/env_chroot.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb.dir/port/port_posix.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/env_hdfs.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb.dir/util/env_posix.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb.dir/util/io_posix.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/event_logger.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/file_util.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/file_reader_writer.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/sst_file_manager_impl.cc.o
+[ 47%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/filter_policy.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/hash.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/histogram.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/histogram_windowing.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/instrumented_mutex.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/iostats_context.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/tools/ldb_cmd.cc.o
+[ 48%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/lru_cache.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/tools/ldb_tool.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/logging.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/log_buffer.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/memenv.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/murmurhash.cc.o
+[ 49%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/options.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/options_helper.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/options_parser.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/options_sanity_check.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/perf_context.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/perf_level.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/random.cc.o
+[ 50%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/rate_limiter.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/sharded_cache.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/slice.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/statistics.cc.o
+[ 51%] Linking CXX static library librocksdb.a
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/status.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/status_message.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/string_util.cc.o
+[ 51%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/sync_point.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/testutil.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/threadpool_imp.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/thread_local.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/thread_status_impl.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/thread_status_updater.cc.o
+[ 52%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/thread_status_util.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/thread_status_util_debug.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/transaction_test_util.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/xxhash.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/backupable/backupable_db.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/blob_db/blob_db.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/checkpoint/checkpoint.cc.o
+[ 53%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc.o
+[ 53%] Built target rocksdb
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/date_tiered/date_tiered_db_impl.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/document/document_db.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/document/json_document.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/document/json_document_builder.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/env_mirror.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/geodb/geodb_impl.cc.o
+[ 54%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/leveldb_options/leveldb_options.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/lua/rocks_lua_compaction_filter.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/memory/memory_util.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/merge_operators/string_append/stringappend.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/merge_operators/string_append/stringappend2.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/merge_operators/put.cc.o
+[ 55%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/merge_operators/max.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/merge_operators/uint64add.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/option_change_migration/option_change_migration.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/options/options_util.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/persistent_cache/block_cache_tier.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/persistent_cache/block_cache_tier_file.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/persistent_cache/block_cache_tier_metadata.cc.o
+[ 56%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/persistent_cache/persistent_cache_tier.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/persistent_cache/volatile_tier_impl.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/redis/redis_lists.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/simulator_cache/sim_cache.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/spatialdb/spatial_db.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/table_properties_collectors/compact_on_deletion_collector.cc.o
+[ 57%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/optimistic_transaction_impl.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/optimistic_transaction_db_impl.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_base.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_impl.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_db_impl.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_db_mutex_impl.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_lock_mgr.cc.o
+[ 58%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/transactions/transaction_util.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/ttl/db_ttl_impl.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/write_batch_with_index/write_batch_with_index.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/write_batch_with_index/write_batch_with_index_internal.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/col_buf_encoder.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/col_buf_decoder.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/utilities/column_aware_encoding_util.cc.o
+[ 59%] Building CXX object CMakeFiles/rocksdb-shared.dir/port/port_posix.cc.o
+[ 60%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/env_posix.cc.o
+[ 60%] Building CXX object CMakeFiles/rocksdb-shared.dir/util/io_posix.cc.o
+[ 60%] Linking CXX shared library librocksdb.so
+[ 60%] Built target rocksdb-shared
+Scanning dependencies of target c_test
+Scanning dependencies of target date_tiered_test
+Scanning dependencies of target column_aware_encoding_test
+Scanning dependencies of target statistics_test
+Scanning dependencies of target geodb_test
+Scanning dependencies of target object_registry_test
+Scanning dependencies of target redis_lists_test
+Scanning dependencies of target compact_on_deletion_collector_test
+[ 60%] Building CXX object CMakeFiles/statistics_test.dir/util/statistics_test.cc.o
+Scanning dependencies of target checkpoint_test
+[ 60%] Building CXX object CMakeFiles/geodb_test.dir/utilities/geodb/geodb_test.cc.o
+[ 60%] Building CXX object CMakeFiles/date_tiered_test.dir/utilities/date_tiered/date_tiered_test.cc.o
+[ 60%] Building C object CMakeFiles/c_test.dir/db/c_test.c.o
+Scanning dependencies of target option_change_migration_test
+Scanning dependencies of target transaction_test
+Scanning dependencies of target json_document_test
+Scanning dependencies of target backupable_db_test
+Scanning dependencies of target ttl_test
+[ 60%] Building CXX object CMakeFiles/column_aware_encoding_test.dir/utilities/column_aware_encoding_test.cc.o
+Scanning dependencies of target document_db_test
+[ 60%] Building CXX object CMakeFiles/compact_on_deletion_collector_test.dir/utilities/table_properties_collectors/compact_on_deletion_collector_test.cc.o
+[ 60%] Building CXX object CMakeFiles/object_registry_test.dir/utilities/object_registry_test.cc.o
+[ 60%] Building CXX object CMakeFiles/option_change_migration_test.dir/utilities/option_change_migration/option_change_migration_test.cc.o
+[ 60%] Building CXX object CMakeFiles/checkpoint_test.dir/utilities/checkpoint/checkpoint_test.cc.o
+[ 60%] Building CXX object CMakeFiles/transaction_test.dir/utilities/transactions/transaction_test.cc.o
+[ 61%] Building CXX object CMakeFiles/json_document_test.dir/utilities/document/json_document_test.cc.o
+[ 61%] Building CXX object CMakeFiles/redis_lists_test.dir/utilities/redis/redis_lists_test.cc.o
+[ 62%] Building CXX object CMakeFiles/ttl_test.dir/utilities/ttl/ttl_test.cc.o
+Scanning dependencies of target memory_test
+[ 63%] Building CXX object CMakeFiles/backupable_db_test.dir/utilities/backupable/backupable_db_test.cc.o
+[ 63%] Building CXX object CMakeFiles/document_db_test.dir/utilities/document/document_db_test.cc.o
+[ 64%] Building CXX object CMakeFiles/memory_test.dir/utilities/memory/memory_test.cc.o
+[ 64%] Linking CXX executable c_test
+[ 64%] Built target c_test
+Scanning dependencies of target slice_transform_test
+[ 64%] Building CXX object CMakeFiles/slice_transform_test.dir/util/slice_transform_test.cc.o
+[ 64%] Linking CXX executable compact_on_deletion_collector_test
+[ 64%] Built target compact_on_deletion_collector_test
+Scanning dependencies of target options_test
+[ 64%] Building CXX object CMakeFiles/options_test.dir/util/options_test.cc.o
+[ 64%] Linking CXX executable geodb_test
+[ 64%] Linking CXX executable statistics_test
+[ 64%] Linking CXX executable date_tiered_test
+[ 64%] Built target geodb_test
+Scanning dependencies of target options_settable_test
+[ 64%] Building CXX object CMakeFiles/options_settable_test.dir/util/options_settable_test.cc.o
+[ 64%] Built target statistics_test
+Scanning dependencies of target mock_env_test
+[ 64%] Building CXX object CMakeFiles/mock_env_test.dir/util/mock_env_test.cc.o
+[ 64%] Linking CXX executable ttl_test
+[ 64%] Built target date_tiered_test
+Scanning dependencies of target rate_limiter_test
+[ 64%] Building CXX object CMakeFiles/rate_limiter_test.dir/util/rate_limiter_test.cc.o
+[ 64%] Linking CXX executable document_db_test
+[ 64%] Linking CXX executable json_document_test
+[ 64%] Linking CXX executable column_aware_encoding_test
+[ 64%] Built target ttl_test
+Scanning dependencies of target lru_cache_test
+[ 64%] Building CXX object CMakeFiles/lru_cache_test.dir/util/lru_cache_test.cc.o
+[ 64%] Built target document_db_test
+Scanning dependencies of target iostats_context_test
+[ 64%] Building CXX object CMakeFiles/iostats_context_test.dir/util/iostats_context_test.cc.o
+[ 64%] Built target json_document_test
+Scanning dependencies of target histogram_test
+[ 65%] Building CXX object CMakeFiles/histogram_test.dir/util/histogram_test.cc.o
+[ 65%] Built target column_aware_encoding_test
+Scanning dependencies of target heap_test
+[ 65%] Building CXX object CMakeFiles/heap_test.dir/util/heap_test.cc.o
+[ 65%] Linking CXX executable slice_transform_test
+[ 65%] Linking CXX executable object_registry_test
+[ 66%] Linking CXX executable mock_env_test
+[ 66%] Built target slice_transform_test
+Scanning dependencies of target file_reader_writer_test
+[ 67%] Building CXX object CMakeFiles/file_reader_writer_test.dir/util/file_reader_writer_test.cc.o
+[ 67%] Built target mock_env_test
+[ 67%] Linking CXX executable redis_lists_test
+Scanning dependencies of target blob_db_test
+[ 67%] Linking CXX executable memory_test
+[ 67%] Building CXX object CMakeFiles/blob_db_test.dir/utilities/blob_db/blob_db_test.cc.o
+[ 67%] Built target object_registry_test
+[ 67%] Linking CXX executable option_change_migration_test
+Scanning dependencies of target filelock_test
+[ 67%] Building CXX object CMakeFiles/filelock_test.dir/util/filelock_test.cc.o
+[ 67%] Linking CXX executable iostats_context_test
+[ 67%] Linking CXX executable rate_limiter_test
+[ 67%] Built target redis_lists_test
+Scanning dependencies of target db_sst_test
+[ 68%] Building CXX object CMakeFiles/db_sst_test.dir/db/db_sst_test.cc.o
+[ 68%] Linking CXX executable lru_cache_test
+[ 68%] Built target memory_test
+Scanning dependencies of target db_bloom_filter_test
+[ 68%] Built target option_change_migration_test
+[ 68%] Building CXX object CMakeFiles/db_bloom_filter_test.dir/db/db_bloom_filter_test.cc.o
+[ 68%] Built target iostats_context_test
+Scanning dependencies of target db_flush_test
+[ 68%] Built target rate_limiter_test
+Scanning dependencies of target db_test2
+[ 68%] Building CXX object CMakeFiles/db_test2.dir/db/db_test2.cc.o
+[ 69%] Building CXX object CMakeFiles/db_flush_test.dir/db/db_flush_test.cc.o
+Scanning dependencies of target merge_helper_test
+[ 70%] Building CXX object CMakeFiles/merge_helper_test.dir/db/merge_helper_test.cc.o
+[ 70%] Linking CXX executable checkpoint_test
+[ 70%] Built target lru_cache_test
+Scanning dependencies of target db_test
+[ 70%] Linking CXX executable histogram_test
+[ 70%] Building CXX object CMakeFiles/db_test.dir/db/db_test.cc.o
+[ 70%] Linking CXX executable heap_test
+[ 70%] Built target histogram_test
+[ 70%] Built target checkpoint_test
+Scanning dependencies of target compact_files_test
+Scanning dependencies of target prefix_test
+[ 70%] Linking CXX executable filelock_test
+[ 70%] Building CXX object CMakeFiles/prefix_test.dir/db/prefix_test.cc.o
+[ 71%] Building CXX object CMakeFiles/compact_files_test.dir/db/compact_files_test.cc.o
+[ 71%] Linking CXX executable prefix_test
+[ 71%] Built target heap_test
+Scanning dependencies of target db_log_iter_test
+[ 71%] Linking CXX executable backupable_db_test
+[ 71%] Building CXX object CMakeFiles/db_log_iter_test.dir/db/db_log_iter_test.cc.o
+[ 71%] Built target filelock_test
+Scanning dependencies of target corruption_test
+[ 71%] Building CXX object CMakeFiles/corruption_test.dir/db/corruption_test.cc.o
+[ 71%] Built target prefix_test
+Scanning dependencies of target options_file_test
+[ 72%] Building CXX object CMakeFiles/options_file_test.dir/db/options_file_test.cc.o
+[ 72%] Built target backupable_db_test
+Scanning dependencies of target db_iter_test
+[ 73%] Building CXX object CMakeFiles/db_iter_test.dir/db/db_iter_test.cc.o
+[ 73%] Linking CXX executable blob_db_test
+[ 73%] Linking CXX executable file_reader_writer_test
+[ 73%] Built target blob_db_test
+Scanning dependencies of target db_inplace_update_test
+[ 73%] Building CXX object CMakeFiles/db_inplace_update_test.dir/db/db_inplace_update_test.cc.o
+[ 73%] Linking CXX executable options_settable_test
+[ 73%] Built target file_reader_writer_test
+Scanning dependencies of target db_dynamic_level_test
+[ 73%] Building CXX object CMakeFiles/db_dynamic_level_test.dir/db/db_dynamic_level_test.cc.o
+[ 73%] Built target options_settable_test
+Scanning dependencies of target env_basic_test
+[ 73%] Building CXX object CMakeFiles/env_basic_test.dir/util/env_basic_test.cc.o
+[ 73%] Linking CXX executable merge_helper_test
+[ 73%] Built target merge_helper_test
+Scanning dependencies of target cache_test
+[ 73%] Building CXX object CMakeFiles/cache_test.dir/util/cache_test.cc.o
+[ 73%] Linking CXX executable db_flush_test
+[ 73%] Built target db_flush_test
+Scanning dependencies of target db_table_properties_test
+[ 73%] Building CXX object CMakeFiles/db_table_properties_test.dir/db/db_table_properties_test.cc.o
+[ 73%] Linking CXX executable compact_files_test
+[ 73%] Linking CXX executable options_test
+[ 73%] Built target compact_files_test
+Scanning dependencies of target compaction_job_stats_test
+[ 74%] Building CXX object CMakeFiles/compaction_job_stats_test.dir/db/compaction_job_stats_test.cc.o
+[ 74%] Linking CXX executable transaction_test
+[ 74%] Linking CXX executable db_log_iter_test
+[ 74%] Linking CXX executable options_file_test
+[ 74%] Built target options_test
+[ 74%] Linking CXX executable db_sst_test
+Scanning dependencies of target cache_bench
+[ 75%] Building CXX object CMakeFiles/cache_bench.dir/util/cache_bench.cc.o
+[ 75%] Linking CXX executable corruption_test
+[ 75%] Linking CXX executable cache_bench
+[ 75%] Built target options_file_test
+Scanning dependencies of target table_properties_collector_test
+[ 75%] Building CXX object CMakeFiles/table_properties_collector_test.dir/db/table_properties_collector_test.cc.o
+[ 75%] Linking CXX executable db_inplace_update_test
+[ 75%] Built target transaction_test
+[ 75%] Built target db_log_iter_test
+Scanning dependencies of target plain_table_db_test
+[ 75%] Building CXX object CMakeFiles/plain_table_db_test.dir/db/plain_table_db_test.cc.o
+Scanning dependencies of target db_universal_compaction_test
+[ 75%] Built target db_sst_test
+[ 75%] Building CXX object CMakeFiles/db_universal_compaction_test.dir/db/db_universal_compaction_test.cc.o
+[ 75%] Built target corruption_test
+Scanning dependencies of target table_reader_bench
+[ 75%] Building CXX object CMakeFiles/table_reader_bench.dir/table/table_reader_bench.cc.o
+[ 75%] Built target cache_bench
+[ 75%] Linking CXX executable table_reader_bench
+Scanning dependencies of target thread_local_test
+Scanning dependencies of target compaction_iterator_test
+[ 75%] Building CXX object CMakeFiles/compaction_iterator_test.dir/db/compaction_iterator_test.cc.o
+[ 75%] Building CXX object CMakeFiles/thread_local_test.dir/util/thread_local_test.cc.o
+[ 76%] Linking CXX executable db_bloom_filter_test
+[ 76%] Built target db_inplace_update_test
+Scanning dependencies of target db_block_cache_test
+[ 76%] Building CXX object CMakeFiles/db_block_cache_test.dir/db/db_block_cache_test.cc.o
+[ 77%] Linking CXX executable env_basic_test
+[ 77%] Built target table_reader_bench
+[ 77%] Built target db_bloom_filter_test
+Scanning dependencies of target column_aware_encoding_exp
+Scanning dependencies of target persistent_cache_test
+[ 77%] Building CXX object CMakeFiles/persistent_cache_test.dir/utilities/persistent_cache/persistent_cache_test.cc.o
+[ 77%] Building CXX object CMakeFiles/column_aware_encoding_exp.dir/utilities/column_aware_encoding_exp.cc.o
+[ 77%] Linking CXX executable cache_test
+[ 77%] Built target env_basic_test
+Scanning dependencies of target db_basic_test
+[ 77%] Linking CXX executable column_aware_encoding_exp
+[ 78%] Building CXX object CMakeFiles/db_basic_test.dir/db/db_basic_test.cc.o
+[ 78%] Linking CXX executable db_dynamic_level_test
+[ 78%] Built target cache_test
+Scanning dependencies of target db_merge_operator_test
+[ 78%] Building CXX object CMakeFiles/db_merge_operator_test.dir/db/db_merge_operator_test.cc.o
+[ 78%] Built target column_aware_encoding_exp
+Scanning dependencies of target db_properties_test
+[ 78%] Building CXX object CMakeFiles/db_properties_test.dir/db/db_properties_test.cc.o
+[ 78%] Built target db_dynamic_level_test
+Scanning dependencies of target memtablerep_bench
+[ 78%] Linking CXX executable db_iter_test
+[ 78%] Building CXX object CMakeFiles/memtablerep_bench.dir/db/memtablerep_bench.cc.o
+[ 78%] Linking CXX executable memtablerep_bench
+[ 78%] Built target db_iter_test
+Scanning dependencies of target db_compaction_filter_test
+[ 78%] Building CXX object CMakeFiles/db_compaction_filter_test.dir/db/db_compaction_filter_test.cc.o
+[ 78%] Built target memtablerep_bench
+Scanning dependencies of target db_memtable_test
+[ 78%] Building CXX object CMakeFiles/db_memtable_test.dir/db/db_memtable_test.cc.o
+[ 78%] Linking CXX executable db_table_properties_test
+[ 78%] Linking CXX executable thread_local_test
+[ 78%] Linking CXX executable db_test2
+[ 78%] Built target thread_local_test
+[ 78%] Built target db_table_properties_test
+Scanning dependencies of target thread_list_test
+Scanning dependencies of target log_test
+[ 78%] Building CXX object CMakeFiles/log_test.dir/db/log_test.cc.o
+[ 78%] Building CXX object CMakeFiles/thread_list_test.dir/util/thread_list_test.cc.o
+[ 78%] Built target db_test2
+Scanning dependencies of target hash_table_bench
+[ 78%] Building CXX object CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o
+[ 78%] Linking CXX executable hash_table_bench
+[ 78%] Built target hash_table_bench
+Scanning dependencies of target dynamic_bloom_test
+[ 78%] Building CXX object CMakeFiles/dynamic_bloom_test.dir/util/dynamic_bloom_test.cc.o
+[ 78%] Linking CXX executable dynamic_bloom_test
+[ 78%] Linking CXX executable compaction_job_stats_test
+[ 78%] Linking CXX executable compaction_iterator_test
+[ 78%] Built target dynamic_bloom_test
+Scanning dependencies of target spatial_db_test
+[ 78%] Building CXX object CMakeFiles/spatial_db_test.dir/utilities/spatialdb/spatial_db_test.cc.o
+[ 78%] Built target compaction_job_stats_test
+Scanning dependencies of target auto_roll_logger_test
+[ 78%] Building CXX object CMakeFiles/auto_roll_logger_test.dir/db/auto_roll_logger_test.cc.o
+[ 78%] Built target compaction_iterator_test
+Scanning dependencies of target external_sst_file_basic_test
+[ 78%] Building CXX object CMakeFiles/external_sst_file_basic_test.dir/db/external_sst_file_basic_test.cc.o
+[ 78%] Linking CXX executable db_block_cache_test
+[ 78%] Linking CXX executable db_merge_operator_test
+[ 78%] Linking CXX executable table_properties_collector_test
+[ 78%] Linking CXX executable thread_list_test
+[ 78%] Built target db_block_cache_test
+[ 78%] Built target table_properties_collector_test
+Scanning dependencies of target db_options_test
+[ 78%] Built target thread_list_test
+Scanning dependencies of target ldb_cmd_test
+[ 78%] Building CXX object CMakeFiles/ldb_cmd_test.dir/tools/ldb_cmd_test.cc.o
+[ 78%] Building CXX object CMakeFiles/db_options_test.dir/db/db_options_test.cc.o
+[ 79%] Linking CXX executable plain_table_db_test
+Scanning dependencies of target column_family_test
+[ 79%] Building CXX object CMakeFiles/column_family_test.dir/db/column_family_test.cc.o
+[ 79%] Built target db_merge_operator_test
+Scanning dependencies of target db_wal_test
+[ 79%] Building CXX object CMakeFiles/db_wal_test.dir/db/db_wal_test.cc.o
+[ 79%] Built target plain_table_db_test
+Scanning dependencies of target bloom_test
+[ 79%] Building CXX object CMakeFiles/bloom_test.dir/util/bloom_test.cc.o
+[ 80%] Linking CXX executable db_memtable_test
+[ 80%] Linking CXX executable bloom_test
+[ 81%] Linking CXX executable db_universal_compaction_test
+[ 81%] Linking CXX executable db_test
+[ 81%] Linking CXX executable persistent_cache_test
+[ 81%] Built target db_memtable_test
+Scanning dependencies of target comparator_db_test
+[ 81%] Building CXX object CMakeFiles/comparator_db_test.dir/db/comparator_db_test.cc.o
+[ 81%] Built target bloom_test
+Scanning dependencies of target db_tailing_iter_test
+[ 81%] Building CXX object CMakeFiles/db_tailing_iter_test.dir/db/db_tailing_iter_test.cc.o
+[ 81%] Linking CXX executable db_basic_test
+[ 82%] Linking CXX executable db_properties_test
+[ 82%] Built target db_universal_compaction_test
+Scanning dependencies of target cuckoo_table_db_test
+[ 83%] Building CXX object CMakeFiles/cuckoo_table_db_test.dir/db/cuckoo_table_db_test.cc.o
+[ 83%] Linking CXX executable db_compaction_filter_test
+[ 83%] Linking CXX executable log_test
+[ 83%] Built target persistent_cache_test
+Scanning dependencies of target stringappend_test
+[ 83%] Built target db_basic_test
+[ 83%] Building CXX object CMakeFiles/stringappend_test.dir/utilities/merge_operators/string_append/stringappend_test.cc.o
+[ 83%] Built target db_test
+Scanning dependencies of target autovector_test
+Scanning dependencies of target dbformat_test
+[ 83%] Building CXX object CMakeFiles/autovector_test.dir/util/autovector_test.cc.o
+[ 83%] Building CXX object CMakeFiles/dbformat_test.dir/db/dbformat_test.cc.o
+[ 83%] Built target db_properties_test
+Scanning dependencies of target db_bench
+[ 83%] Building CXX object CMakeFiles/db_bench.dir/tools/db_bench.cc.o
+[ 83%] Linking CXX executable auto_roll_logger_test
+[ 83%] Linking CXX executable db_bench
+[ 83%] Linking CXX executable ldb_cmd_test
+[ 83%] Linking CXX executable spatial_db_test
+[ 83%] Built target log_test
+[ 83%] Built target db_compaction_filter_test
+Scanning dependencies of target compaction_picker_test
+[ 83%] Building CXX object CMakeFiles/compaction_picker_test.dir/db/compaction_picker_test.cc.o
+Scanning dependencies of target deletefile_test
+[ 83%] Built target auto_roll_logger_test
+[ 83%] Built target db_bench
+[ 84%] Building CXX object CMakeFiles/deletefile_test.dir/db/deletefile_test.cc.o
+Scanning dependencies of target sst_dump_test
+Scanning dependencies of target fault_injection_test
+[ 84%] Building CXX object CMakeFiles/sst_dump_test.dir/tools/sst_dump_test.cc.o
+[ 84%] Building CXX object CMakeFiles/fault_injection_test.dir/db/fault_injection_test.cc.o
+[ 84%] Built target ldb_cmd_test
+[ 84%] Built target spatial_db_test
+Scanning dependencies of target db_range_del_test
+Scanning dependencies of target delete_scheduler_test
+[ 84%] Building CXX object CMakeFiles/db_range_del_test.dir/db/db_range_del_test.cc.o
+[ 84%] Building CXX object CMakeFiles/delete_scheduler_test.dir/util/delete_scheduler_test.cc.o
+[ 85%] Linking CXX executable external_sst_file_basic_test
+[ 86%] Linking CXX executable comparator_db_test
+[ 86%] Linking CXX executable dbformat_test
+[ 86%] Built target external_sst_file_basic_test
+Scanning dependencies of target file_indexer_test
+[ 86%] Building CXX object CMakeFiles/file_indexer_test.dir/db/file_indexer_test.cc.o
+[ 87%] Linking CXX executable stringappend_test
+[ 87%] Built target comparator_db_test
+[ 87%] Built target dbformat_test
+Scanning dependencies of target hash_table_test
+Scanning dependencies of target filename_test
+[ 87%] Building CXX object CMakeFiles/filename_test.dir/db/filename_test.cc.o
+[ 87%] Building CXX object CMakeFiles/hash_table_test.dir/utilities/persistent_cache/hash_table_test.cc.o
+[ 87%] Built target stringappend_test
+[ 87%] Linking CXX executable autovector_test
+Scanning dependencies of target external_sst_file_test
+[ 87%] Building CXX object CMakeFiles/external_sst_file_test.dir/db/external_sst_file_test.cc.o
+[ 87%] Linking CXX executable sst_dump_test
+[ 87%] Built target autovector_test
+Scanning dependencies of target wal_manager_test
+[ 87%] Building CXX object CMakeFiles/wal_manager_test.dir/db/wal_manager_test.cc.o
+[ 87%] Built target sst_dump_test
+Scanning dependencies of target options_util_test
+[ 88%] Building CXX object CMakeFiles/options_util_test.dir/utilities/options/options_util_test.cc.o
+[ 88%] Linking CXX executable delete_scheduler_test
+[ 89%] Linking CXX executable db_tailing_iter_test
+[ 89%] Linking CXX executable cuckoo_table_db_test
+[ 89%] Built target delete_scheduler_test
+Scanning dependencies of target crc32c_test
+[ 89%] Building CXX object CMakeFiles/crc32c_test.dir/util/crc32c_test.cc.o
+[ 89%] Linking CXX executable deletefile_test
+[ 89%] Built target db_tailing_iter_test
+Scanning dependencies of target flush_job_test
+[ 89%] Building CXX object CMakeFiles/flush_job_test.dir/db/flush_job_test.cc.o
+[ 89%] Built target cuckoo_table_db_test
+Scanning dependencies of target db_iterator_test
+[ 89%] Building CXX object CMakeFiles/db_iterator_test.dir/db/db_iterator_test.cc.o
+[ 89%] Linking CXX executable file_indexer_test
+[ 89%] Linking CXX executable filename_test
+[ 89%] Built target deletefile_test
+[ 89%] Linking CXX executable db_options_test
+Scanning dependencies of target inlineskiplist_test
+[ 89%] Building CXX object CMakeFiles/inlineskiplist_test.dir/db/inlineskiplist_test.cc.o
+[ 89%] Linking CXX executable fault_injection_test
+[ 89%] Built target file_indexer_test
+Scanning dependencies of target skiplist_test
+[ 89%] Built target filename_test
+[ 89%] Building CXX object CMakeFiles/skiplist_test.dir/db/skiplist_test.cc.o
+Scanning dependencies of target db_compaction_test
+[ 89%] Building CXX object CMakeFiles/db_compaction_test.dir/db/db_compaction_test.cc.o
+[ 89%] Linking CXX executable compaction_picker_test
+[ 89%] Built target fault_injection_test
+Scanning dependencies of target listener_test
+[ 89%] Built target db_options_test
+[ 89%] Linking CXX executable db_range_del_test
+[ 89%] Building CXX object CMakeFiles/listener_test.dir/db/listener_test.cc.o
+Scanning dependencies of target memtable_list_test
+[ 89%] Building CXX object CMakeFiles/memtable_list_test.dir/db/memtable_list_test.cc.o
+[ 89%] Linking CXX executable crc32c_test
+[ 89%] Built target compaction_picker_test
+Scanning dependencies of target perf_context_test
+[ 89%] Building CXX object CMakeFiles/perf_context_test.dir/db/perf_context_test.cc.o
+[ 89%] Built target db_range_del_test
+Scanning dependencies of target table_test
+[ 89%] Building CXX object CMakeFiles/table_test.dir/table/table_test.cc.o
+[ 89%] Built target crc32c_test
+Scanning dependencies of target repair_test
+[ 89%] Building CXX object CMakeFiles/repair_test.dir/db/repair_test.cc.o
+[ 89%] Linking CXX executable hash_table_test
+[ 89%] Built target hash_table_test
+Scanning dependencies of target version_builder_test
+[ 89%] Building CXX object CMakeFiles/version_builder_test.dir/db/version_builder_test.cc.o
+[ 89%] Linking CXX executable inlineskiplist_test
+[ 89%] Linking CXX executable skiplist_test
+[ 89%] Linking CXX executable db_wal_test
+[ 89%] Built target inlineskiplist_test
+Scanning dependencies of target version_edit_test
+[ 89%] Building CXX object CMakeFiles/version_edit_test.dir/db/version_edit_test.cc.o
+[ 89%] Linking CXX executable wal_manager_test
+[ 89%] Built target skiplist_test
+Scanning dependencies of target rocks_lua_test
+[ 89%] Building CXX object CMakeFiles/rocks_lua_test.dir/utilities/lua/rocks_lua_test.cc.o
+[ 89%] Linking CXX executable rocks_lua_test
+[ 89%] Built target wal_manager_test
+Scanning dependencies of target write_batch_test
+[ 89%] Building CXX object CMakeFiles/write_batch_test.dir/db/write_batch_test.cc.o
+[ 89%] Built target db_wal_test
+Scanning dependencies of target write_callback_test
+[ 89%] Building CXX object CMakeFiles/write_callback_test.dir/db/write_callback_test.cc.o
+[ 89%] Built target rocks_lua_test
+Scanning dependencies of target compaction_job_test
+[ 89%] Building CXX object CMakeFiles/compaction_job_test.dir/db/compaction_job_test.cc.o
+[ 89%] Linking CXX executable options_util_test
+[ 90%] Linking CXX executable flush_job_test
+[ 90%] Linking CXX executable perf_context_test
+[ 90%] Built target options_util_test
+[ 90%] Built target flush_job_test
+Scanning dependencies of target manual_compaction_test
+Scanning dependencies of target db_io_failure_test
+[ 90%] Building CXX object CMakeFiles/manual_compaction_test.dir/db/manual_compaction_test.cc.o
+[ 90%] Building CXX object CMakeFiles/db_io_failure_test.dir/db/db_io_failure_test.cc.o
+[ 90%] Built target perf_context_test
+Scanning dependencies of target block_based_filter_block_test
+[ 90%] Building CXX object CMakeFiles/block_based_filter_block_test.dir/table/block_based_filter_block_test.cc.o
+[ 90%] Linking CXX executable version_builder_test
+[ 90%] Linking CXX executable version_edit_test
+[ 90%] Linking CXX executable memtable_list_test
+[ 90%] Built target version_builder_test
+[ 90%] Built target version_edit_test
+Scanning dependencies of target block_test
+[ 90%] Building CXX object CMakeFiles/block_test.dir/table/block_test.cc.o
+Scanning dependencies of target cuckoo_table_builder_test
+[ 90%] Building CXX object CMakeFiles/cuckoo_table_builder_test.dir/table/cuckoo_table_builder_test.cc.o
+[ 90%] Linking CXX executable column_family_test
+[ 90%] Built target memtable_list_test
+Scanning dependencies of target write_controller_test
+[ 90%] Building CXX object CMakeFiles/write_controller_test.dir/db/write_controller_test.cc.o
+[ 90%] Linking CXX executable repair_test
+[ 91%] Linking CXX executable listener_test
+[ 91%] Linking CXX executable db_iterator_test
+[ 91%] Built target column_family_test
+[ 91%] Built target repair_test
+Scanning dependencies of target cuckoo_table_reader_test
+[ 91%] Linking CXX executable external_sst_file_test
+Scanning dependencies of target merge_test
+[ 91%] Building CXX object CMakeFiles/cuckoo_table_reader_test.dir/table/cuckoo_table_reader_test.cc.o
+[ 91%] Building CXX object CMakeFiles/merge_test.dir/db/merge_test.cc.o
+[ 91%] Linking CXX executable cuckoo_table_reader_test
+[ 91%] Linking CXX executable manual_compaction_test
+[ 91%] Built target listener_test
+Scanning dependencies of target full_filter_block_test
+[ 91%] Building CXX object CMakeFiles/full_filter_block_test.dir/table/full_filter_block_test.cc.o
+[ 91%] Linking CXX executable write_batch_test
+[ 91%] Built target db_iterator_test
+[ 91%] Built target cuckoo_table_reader_test
+Scanning dependencies of target merger_test
+[ 91%] Building CXX object CMakeFiles/merger_test.dir/table/merger_test.cc.o
+Scanning dependencies of target reduce_levels_test
+[ 92%] Building CXX object CMakeFiles/reduce_levels_test.dir/tools/reduce_levels_test.cc.o
+[ 92%] Built target manual_compaction_test
+Scanning dependencies of target write_batch_with_index_test
+[ 92%] Building CXX object CMakeFiles/write_batch_with_index_test.dir/utilities/write_batch_with_index/write_batch_with_index_test.cc.o
+[ 92%] Built target external_sst_file_test
+Scanning dependencies of target version_set_test
+[ 93%] Building CXX object CMakeFiles/version_set_test.dir/db/version_set_test.cc.o
+[ 93%] Linking CXX executable write_controller_test
+[ 93%] Linking CXX executable block_based_filter_block_test
+[ 93%] Built target write_batch_test
+Scanning dependencies of target arena_test
+[ 93%] Building CXX object CMakeFiles/arena_test.dir/util/arena_test.cc.o
+[ 93%] Linking CXX executable write_callback_test
+[ 93%] Built target write_controller_test
+Scanning dependencies of target coding_test
+[ 93%] Built target block_based_filter_block_test
+[ 93%] Building CXX object CMakeFiles/coding_test.dir/util/coding_test.cc.o
+Scanning dependencies of target optimistic_transaction_test
+[ 93%] Building CXX object CMakeFiles/optimistic_transaction_test.dir/utilities/transactions/optimistic_transaction_test.cc.o
+[ 93%] Built target write_callback_test
+Scanning dependencies of target env_test
+[ 93%] Building CXX object CMakeFiles/env_test.dir/util/env_test.cc.o
+[ 93%] Linking CXX executable db_io_failure_test
+[ 93%] Linking CXX executable compaction_job_test
+[ 93%] Linking CXX executable db_compaction_test
+[ 93%] Linking CXX executable arena_test
+[ 94%] Linking CXX executable block_test
+[ 95%] Linking CXX executable table_test
+[ 95%] Linking CXX executable full_filter_block_test
+[ 95%] Built target compaction_job_test
+[ 95%] Built target db_io_failure_test
+Scanning dependencies of target write_stress
+[ 95%] Building CXX object tools/CMakeFiles/write_stress.dir/write_stress.cc.o
+Scanning dependencies of target event_logger_test
+[ 96%] Linking CXX executable write_stress
+[ 96%] Building CXX object CMakeFiles/event_logger_test.dir/util/event_logger_test.cc.o
+[ 96%] Built target arena_test
+[ 96%] Built target write_stress
+Scanning dependencies of target sst_dump
+[ 96%] Built target block_test
+[ 97%] Linking CXX executable coding_test
+[ 98%] Building CXX object tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o
+Scanning dependencies of target ldb
+[ 98%] Linking CXX executable merger_test
+Scanning dependencies of target db_stress
+[ 98%] Linking CXX executable sst_dump
+[ 98%] Linking CXX executable cuckoo_table_builder_test
+[ 98%] Building CXX object tools/CMakeFiles/ldb.dir/ldb.cc.o
+[ 98%] Building CXX object tools/CMakeFiles/db_stress.dir/db_stress.cc.o
+[ 98%] Built target full_filter_block_test
+[ 98%] Linking CXX executable db_stress
+Scanning dependencies of target db_repl_stress
+[ 98%] Built target db_compaction_test
+[ 98%] Built target db_stress
+Scanning dependencies of target db_sanity_test
+Scanning dependencies of target rocksdb_undump
+[ 98%] Building CXX object tools/CMakeFiles/db_sanity_test.dir/db_sanity_test.cc.o
+[ 98%] Building CXX object tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o
+[ 98%] Built target table_test
+[ 98%] Building CXX object tools/CMakeFiles/rocksdb_undump.dir/dump/rocksdb_undump.cc.o
+Scanning dependencies of target rocksdb_dump
+[ 98%] Building CXX object tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o
+[ 99%] Linking CXX executable rocksdb_undump
+[ 99%] Linking CXX executable db_repl_stress
+[ 99%] Built target sst_dump
+[ 99%] Linking CXX executable rocksdb_dump
+[ 99%] Built target rocksdb_undump
+[ 99%] Built target coding_test
+[ 99%] Built target db_repl_stress
+[ 99%] Built target merger_test
+[ 99%] Built target rocksdb_dump
+[ 99%] Built target cuckoo_table_builder_test
+[ 99%] Linking CXX executable merge_test
+[ 99%] Linking CXX executable ldb
+[ 99%] Built target merge_test
+[ 99%] Built target ldb
+[ 99%] Linking CXX executable version_set_test
+[ 99%] Linking CXX executable event_logger_test
+[ 99%] Linking CXX executable reduce_levels_test
+[ 99%] Built target event_logger_test
+[ 99%] Built target version_set_test
+[ 99%] Linking CXX executable optimistic_transaction_test
+[ 99%] Built target reduce_levels_test
+[ 99%] Linking CXX executable db_sanity_test
+[ 99%] Built target optimistic_transaction_test
+[ 99%] Built target db_sanity_test
+[ 99%] Linking CXX executable env_test
+[100%] Linking CXX executable write_batch_with_index_test
+[100%] Built target env_test
+[100%] Built target write_batch_with_index_test
+[  0%] Built target build_version
+[ 29%] Built target rocksdb-shared
+[ 30%] Built target testutillib
+[ 30%] Built target c_test
+[ 31%] Built target gtest
+[ 31%] Built target testharness
+[ 31%] Built target column_aware_encoding_test
+[ 32%] Built target ttl_test
+[ 32%] Built target transaction_test
+[ 32%] Built target compact_on_deletion_collector_test
+[ 32%] Built target redis_lists_test
+[ 32%] Built target option_change_migration_test
+[ 33%] Built target memory_test
+[ 33%] Built target geodb_test
+[ 33%] Built target object_registry_test
+[ 34%] Built target json_document_test
+[ 34%] Built target document_db_test
+[ 34%] Built target date_tiered_test
+[ 34%] Built target checkpoint_test
+[ 35%] Built target backupable_db_test
+[ 35%] Built target statistics_test
+[ 35%] Built target slice_transform_test
+[ 35%] Built target options_test
+[ 35%] Built target options_settable_test
+[ 36%] Built target mock_env_test
+[ 36%] Built target rate_limiter_test
+[ 36%] Built target lru_cache_test
+[ 36%] Built target iostats_context_test
+[ 37%] Built target histogram_test
+[ 37%] Built target heap_test
+[ 38%] Built target file_reader_writer_test
+[ 38%] Built target blob_db_test
+[ 38%] Built target filelock_test
+[ 39%] Built target db_sst_test
+[ 40%] Built target db_bloom_filter_test
+[ 41%] Built target db_flush_test
+[ 41%] Built target db_test2
+[ 42%] Built target merge_helper_test
+[ 42%] Built target db_test
+[ 43%] Built target compact_files_test
+[ 43%] Built target prefix_test
+[ 43%] Built target db_log_iter_test
+[ 43%] Built target corruption_test
+[ 44%] Built target options_file_test
+[ 45%] Built target db_iter_test
+[ 45%] Built target db_inplace_update_test
+[ 45%] Built target db_dynamic_level_test
+[ 46%] Built target env_basic_test
+[ 46%] Built target cache_test
+[ 46%] Built target db_table_properties_test
+[ 47%] Built target compaction_job_stats_test
+[ 48%] Built target cache_bench
+[ 48%] Built target table_properties_collector_test
+[ 49%] Built target db_universal_compaction_test
+[ 78%] Built target rocksdb
+[ 79%] Built target plain_table_db_test
+[ 79%] Built target table_reader_bench
+[ 79%] Built target thread_local_test
+[ 79%] Built target compaction_iterator_test
+[ 79%] Built target db_block_cache_test
+[ 79%] Built target column_aware_encoding_exp
+[ 79%] Built target persistent_cache_test
+[ 80%] Built target db_basic_test
+[ 80%] Built target db_merge_operator_test
+[ 81%] Built target db_properties_test
+[ 81%] Built target memtablerep_bench
+[ 81%] Built target db_compaction_filter_test
+[ 82%] Built target db_memtable_test
+[ 82%] Built target thread_list_test
+[ 82%] Built target log_test
+[ 82%] Built target hash_table_bench
+[ 82%] Built target dynamic_bloom_test
+[ 82%] Built target spatial_db_test
+[ 82%] Built target auto_roll_logger_test
+[ 83%] Built target external_sst_file_basic_test
+[ 83%] Built target db_options_test
+[ 83%] Built target ldb_cmd_test
+[ 83%] Built target column_family_test
+[ 83%] Built target db_wal_test
+[ 83%] Built target bloom_test
+[ 84%] Built target comparator_db_test
+[ 85%] Built target db_tailing_iter_test
+[ 86%] Built target cuckoo_table_db_test
+[ 87%] Built target stringappend_test
+[ 87%] Built target autovector_test
+[ 87%] Built target dbformat_test
+[ 87%] Built target db_bench
+[ 87%] Built target compaction_picker_test
+[ 88%] Built target deletefile_test
+[ 88%] Built target fault_injection_test
+[ 88%] Built target sst_dump_test
+[ 88%] Built target db_range_del_test
+[ 88%] Built target delete_scheduler_test
+[ 88%] Built target file_indexer_test
+[ 88%] Built target hash_table_test
+[ 88%] Built target filename_test
+[ 88%] Built target external_sst_file_test
+[ 88%] Built target wal_manager_test
+[ 89%] Built target options_util_test
+[ 89%] Built target crc32c_test
+[ 90%] Built target flush_job_test
+[ 90%] Built target db_iterator_test
+[ 90%] Built target inlineskiplist_test
+[ 90%] Built target skiplist_test
+[ 90%] Built target db_compaction_test
+[ 91%] Built target listener_test
+[ 91%] Built target memtable_list_test
+[ 91%] Built target perf_context_test
+[ 92%] Built target table_test
+[ 92%] Built target repair_test
+[ 92%] Built target version_builder_test
+[ 92%] Built target version_edit_test
+[ 92%] Built target rocks_lua_test
+[ 92%] Built target write_batch_test
+[ 92%] Built target write_callback_test
+[ 92%] Built target compaction_job_test
+[ 92%] Built target manual_compaction_test
+[ 92%] Built target db_io_failure_test
+[ 92%] Built target block_based_filter_block_test
+[ 93%] Built target block_test
+[ 93%] Built target cuckoo_table_builder_test
+[ 93%] Built target write_controller_test
+[ 93%] Built target cuckoo_table_reader_test
+[ 93%] Built target merge_test
+[ 93%] Built target full_filter_block_test
+[ 93%] Built target merger_test
+[ 94%] Built target reduce_levels_test
+[ 95%] Built target write_batch_with_index_test
+[ 96%] Built target version_set_test
+[ 96%] Built target arena_test
+[ 97%] Built target coding_test
+[ 97%] Built target optimistic_transaction_test
+[ 97%] Built target env_test
+[ 97%] Built target event_logger_test
+[ 98%] Built target write_stress
+[ 98%] Built target db_stress
+[ 99%] Built target sst_dump
+[ 99%] Built target ldb
+[ 99%] Built target db_repl_stress
+[ 99%] Built target db_sanity_test
+[100%] Built target rocksdb_undump
+[100%] Built target rocksdb_dump
+Install the project...
+-- Install configuration: ""
+-- Installing: /usr/lib64/librocksdb.a
+-- Installing: /usr/lib64/librocksdb.so.5.3.6
+-- Installing: /usr/lib64/librocksdb.so.5
+-- Installing: /usr/lib64/librocksdb.so
+-- Installing: /usr/include/rocksdb
+-- Installing: /usr/include/rocksdb/write_batch_base.h
+-- Installing: /usr/include/rocksdb/advanced_options.h
+-- Installing: /usr/include/rocksdb/wal_filter.h
+-- Installing: /usr/include/rocksdb/perf_context.h
+-- Installing: /usr/include/rocksdb/metadata.h
+-- Installing: /usr/include/rocksdb/compaction_filter.h
+-- Installing: /usr/include/rocksdb/comparator.h
+-- Installing: /usr/include/rocksdb/types.h
+-- Installing: /usr/include/rocksdb/rate_limiter.h
+-- Installing: /usr/include/rocksdb/db_bench_tool.h
+-- Installing: /usr/include/rocksdb/transaction_log.h
+-- Installing: /usr/include/rocksdb/compaction_job_stats.h
+-- Installing: /usr/include/rocksdb/cache.h
+-- Installing: /usr/include/rocksdb/write_buffer_manager.h
+-- Installing: /usr/include/rocksdb/write_batch.h
+-- Installing: /usr/include/rocksdb/filter_policy.h
+-- Installing: /usr/include/rocksdb/experimental.h
+-- Installing: /usr/include/rocksdb/sst_file_writer.h
+-- Installing: /usr/include/rocksdb/version.h
+-- Installing: /usr/include/rocksdb/memtablerep.h
+-- Installing: /usr/include/rocksdb/iterator.h
+-- Installing: /usr/include/rocksdb/slice_transform.h
+-- Installing: /usr/include/rocksdb/db_dump_tool.h
+-- Installing: /usr/include/rocksdb/statistics.h
+-- Installing: /usr/include/rocksdb/env.h
+-- Installing: /usr/include/rocksdb/table_properties.h
+-- Installing: /usr/include/rocksdb/perf_level.h
+-- Installing: /usr/include/rocksdb/db.h
+-- Installing: /usr/include/rocksdb/table.h
+-- Installing: /usr/include/rocksdb/merge_operator.h
+-- Installing: /usr/include/rocksdb/sst_file_manager.h
+-- Installing: /usr/include/rocksdb/listener.h
+-- Installing: /usr/include/rocksdb/options.h
+-- Installing: /usr/include/rocksdb/flush_block_policy.h
+-- Installing: /usr/include/rocksdb/slice.h
+-- Installing: /usr/include/rocksdb/ldb_tool.h
+-- Installing: /usr/include/rocksdb/threadpool.h
+-- Installing: /usr/include/rocksdb/persistent_cache.h
+-- Installing: /usr/include/rocksdb/sst_dump_tool.h
+-- Installing: /usr/include/rocksdb/snapshot.h
+-- Installing: /usr/include/rocksdb/status.h
+-- Installing: /usr/include/rocksdb/iostats_context.h
+-- Installing: /usr/include/rocksdb/utilities
+-- Installing: /usr/include/rocksdb/utilities/memory_util.h
+-- Installing: /usr/include/rocksdb/utilities/transaction_db_mutex.h
+-- Installing: /usr/include/rocksdb/utilities/env_librados.h
+-- Installing: /usr/include/rocksdb/utilities/object_registry.h
+-- Installing: /usr/include/rocksdb/utilities/optimistic_transaction_db.h
+-- Installing: /usr/include/rocksdb/utilities/utility_db.h
+-- Installing: /usr/include/rocksdb/utilities/ldb_cmd.h
+-- Installing: /usr/include/rocksdb/utilities/sim_cache.h
+-- Installing: /usr/include/rocksdb/utilities/geo_db.h
+-- Installing: /usr/include/rocksdb/utilities/table_properties_collectors.h
+-- Installing: /usr/include/rocksdb/utilities/date_tiered_db.h
+-- Installing: /usr/include/rocksdb/utilities/options_util.h
+-- Installing: /usr/include/rocksdb/utilities/checkpoint.h
+-- Installing: /usr/include/rocksdb/utilities/ldb_cmd_execute_result.h
+-- Installing: /usr/include/rocksdb/utilities/spatial_db.h
+-- Installing: /usr/include/rocksdb/utilities/env_mirror.h
+-- Installing: /usr/include/rocksdb/utilities/json_document.h
+-- Installing: /usr/include/rocksdb/utilities/info_log_finder.h
+-- Installing: /usr/include/rocksdb/utilities/document_db.h
+-- Installing: /usr/include/rocksdb/utilities/db_ttl.h
+-- Installing: /usr/include/rocksdb/utilities/option_change_migration.h
+-- Installing: /usr/include/rocksdb/utilities/stackable_db.h
+-- Installing: /usr/include/rocksdb/utilities/transaction_db.h
+-- Installing: /usr/include/rocksdb/utilities/write_batch_with_index.h
+-- Installing: /usr/include/rocksdb/utilities/leveldb_options.h
+-- Installing: /usr/include/rocksdb/utilities/transaction.h
+-- Installing: /usr/include/rocksdb/utilities/lua
+-- Installing: /usr/include/rocksdb/utilities/lua/rocks_lua_util.h
+-- Installing: /usr/include/rocksdb/utilities/lua/rocks_lua_compaction_filter.h
+-- Installing: /usr/include/rocksdb/utilities/lua/rocks_lua_custom_library.h
+-- Installing: /usr/include/rocksdb/utilities/backupable_db.h
+-- Installing: /usr/include/rocksdb/utilities/convenience.h
+-- Installing: /usr/include/rocksdb/universal_compaction.h
+-- Installing: /usr/include/rocksdb/thread_status.h
+-- Installing: /usr/include/rocksdb/c.h
+-- Installing: /usr/include/rocksdb/convenience.h
+ ---> 75f2ca91eb11
+Removing intermediate container d39e049378d0
+Step 52/59 : WORKDIR ../..
+ ---> 4b6708b5b246
+Removing intermediate container b84a7d0b7316
+Step 53/59 : RUN pip install tqdm seaborn selenium
+ ---> Running in 0b61143adcbc
+Collecting tqdm
+  Downloading tqdm-4.11.2-py2.py3-none-any.whl (46kB)
+Requirement already satisfied: seaborn in /opt/anaconda/lib/python3.6/site-packages
+Collecting selenium
+  Downloading selenium-3.4.2-py2.py3-none-any.whl (931kB)
+Installing collected packages: tqdm, selenium
+Successfully installed selenium-3.4.2 tqdm-4.11.2
+ ---> fd5b050e55ca
+Removing intermediate container 0b61143adcbc
+Step 54/59 : ENV PYTHONPATH /notebooks
+ ---> Running in 3b2f56cee95c
+ ---> bccc8a2426cc
+Removing intermediate container 3b2f56cee95c
+Step 55/59 : ENV LD_LIBRARY_PATH /usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ ---> Running in 1a066fff22ad
+ ---> b74408354179
+Removing intermediate container 1a066fff22ad
+Step 56/59 : RUN echo "#!/bin/bash\necho 'Generating config'\njupyter-notebook --generate-config --config=/etc/jupyter-notebook.py\necho 'Replacing config with password'\nsed -i \ \n        -e \"s/^# *c.NotebookApp.ip = 'localhost'$/c.NotebookApp.ip = '0.0.0.0'/\" \ \n        -e \"s/^# *c.NotebookApp.port = 8888$/c.NotebookApp.port = 8888/\" \ \n        -e \"s/^# *c.NotebookApp.open_browser = True$/c.NotebookApp.open_browser = False/\" \ \n        -e \"s/^# *c.IPKernelApp.matplotlib = None$/c.IPKernelApp.matplotlib = 'inline'/\" \ \n        -e \"s/^# *c.NotebookApp.password = u''$/c.NotebookApp.password = u'\$JUPYTER_PASSWORD'/\" \ \n        -e \"s/^# *c.IPKernelApp.extensions = \[\]$/c.IPKernelApp.extensions = ['version_information']/\" \ \n        /etc/jupyter-notebook.py \nrm /opt/anaconda/lib/libstdc++.so.6 \nln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/anaconda/lib/libstdc++.so.6 \nif [ -n \"\$ENABLE_GOMP_HACK\" ] \nthen \n    rm /opt/anaconda/lib/libgomp.so.1 \n    ln -s $(find /usr/lib -name libgomp.so.1) /opt/anaconda/lib/libgomp.so.1 \nfi \nif [ -n \"\${FETCH_SENSETHEFLOW}\" ] \nthen \n    git clone https://github.com/gpascualg/SenseTheFlow.git /notebooks/SenseTheFlow \nfi \njupyter-notebook /notebooks --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
+ ---> Running in c2f580a66f9a
+ ---> 88f468746c8e
+Removing intermediate container c2f580a66f9a
+Step 57/59 : RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
+ ---> Running in e8e299b726f6
+ ---> ce3805a1cc0b
+Removing intermediate container e8e299b726f6
+Step 58/59 : RUN chmod +x /opt/anaconda/run_jupyter.sh
+ ---> Running in 303372a1abfa
+ ---> 81f38bc82aa6
+Removing intermediate container 303372a1abfa
+Step 59/59 : ENTRYPOINT /opt/anaconda/run_jupyter.sh
+ ---> Running in 30939e9ac1a8
+ ---> 45263bd20236
+Removing intermediate container 30939e9ac1a8
+Successfully built 45263bd20236
+Error: Cannot perform an interactive login from a non TTY device
+
+----- DONE -----
