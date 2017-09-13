@@ -3,16 +3,17 @@ MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 
 # Update + dependencies #
 #########################
-RUN apt-get update && apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim \
-		libxrender1 libfontconfig1 git
 
-RUN apt-get install -y swig pkg-config openjdk-8-jdk-headless autoconf
+RUN apt-get update && \
+	apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim \
+		libxrender1 libfontconfig1 git \
+		swig pkg-config openjdk-8-jdk-headless autoconf locate build-essential
 
 # Get anaconda #
 ################
-RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.3.1-Linux-x86_64.sh 
-RUN bash Anaconda3-4.3.1-Linux-x86_64.sh -b -p /opt/anaconda
-RUN rm Anaconda3-4.3.1-Linux-x86_64.sh
+RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.4.0-Linux-x86_64.sh && \
+	bash Anaconda3-4.4.0-Linux-x86_64.sh -b -p /opt/anaconda && \
+	rm Anaconda3-4.4.0-Linux-x86_64.sh
 
 ## Export path
 ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
@@ -35,16 +36,17 @@ VOLUME ["/data"]
 
 # Get Bazel #
 #############
-RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.4.5/bazel-0.4.5-installer-linux-x86_64.sh
-RUN chmod +x bazel-0.4.5-installer-linux-x86_64.sh
-RUN ./bazel-0.4.5-installer-linux-x86_64.sh --user
+# 0.4.5 was working
+RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.5.4/bazel-0.5.4-installer-linux-x86_64.sh && \
+	chmod +x bazel-0.5.4-installer-linux-x86_64.sh && \
+	./bazel-0.5.4-installer-linux-x86_64.sh --user
 
 
 # Get tensorflow #
 ##################
 RUN git clone https://github.com/tensorflow/tensorflow
 WORKDIR tensorflow
-RUN git checkout r1.2
+RUN git checkout r1.3
 
 ## Hack to make tensorflow build process use non-standard python location
 RUN sed -i \
@@ -52,7 +54,6 @@ RUN sed -i \
 	third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
 
 ## Setup bazel configuration variables
-RUN apt-get install -y locate build-essential
 ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python
 ENV USE_DEFAULT_PYTHON_LIB_PATH=1
 ENV TF_NEED_MKL=1
@@ -61,21 +62,24 @@ ENV TF_NEED_CUDA=1
 ENV TF_NEED_OPENCL=0
 ENV TF_NEED_JEMALLOC=1
 ENV TF_NEED_HDFS=0
+ENV TF_NEED_GDR=0
+ENV TF_NEED_MPI=0
 ENV TF_ENABLE_XLA=1
 ENV TF_CUDA_CLANG=0
 ENV TF_NEED_GCP=0
 ENV TF_CUDA_VERSION=8.0
 ENV TF_CUDNN_VERSION=5
 ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.1
-RUN chmod +x configure
-RUN sed -i -e '3,4d' configure
-RUN ./configure
+RUN chmod +x configure && \
+	sed -i -e '3,4d' configure && \
+	sed -i '/^\s*sha256 = /d' tensorflow/workspace.bzl && \
+	./configure
 
 ## Build and install
 RUN bazel build -s  --config=opt --config=cuda --verbose_failures //tensorflow/tools/pip_package:build_pip_package
 
-RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
-RUN pip install /tmp/tensorflow_pkg/$(ls /tmp/tensorflow_pkg)
+RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg && \
+	pip install /tmp/tensorflow_pkg/$(ls /tmp/tensorflow_pkg)
 
 ## Back to root
 WORKDIR ..
@@ -98,19 +102,19 @@ WORKDIR ../..
 
 # Install other dependencies #
 ##############################
-RUN pip install tqdm seaborn selenium
+RUN pip install tqdm seaborn selenium pandas==0.19.2 keras
 
 
 # Setup PYTHONPATH #
 ####################
-ENV PYTHONPATH=/notebooks
+ENV PYTHONPATH=/notebooks:/opt/python-libs
 
 
 # Configure jupyter at startup
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 RUN echo "#!/bin/bash\n\
 echo 'Generating config'\n\
-jupyter-notebook --generate-config --config=/etc/jupyter-notebook.py\n\
+jupyter-notebook --allow-root --generate-config --config=/etc/jupyter-notebook.py\n\
 echo 'Replacing config with password'\n\
 sed -i \ \n\
         -e \"s/^# *c.NotebookApp.ip = 'localhost'$/c.NotebookApp.ip = '0.0.0.0'/\" \ \n\
@@ -130,12 +134,13 @@ then \n\
     ln -s $(find /usr/lib -name libgomp.so.1) /opt/anaconda/lib/libgomp.so.1 \n\
 fi \n\
 # Fetch latest SenseTheFlow \n\
-if [ -n \"\${FETCH_SENSETHEFLOW}\" ] \n\
+if [ -n \"\${FETCH_TF_CONTRIB}\" ] \n\
 then \n\
-    git clone https://github.com/gpascualg/SenseTheFlow.git /notebooks/SenseTheFlow \n\
+    pip install git+https://www.github.com/farizrahman4u/keras-contrib.git \n\
+    git clone https://github.com/gpascualg/SenseTheFlow.git /opt/python-libs/SenseTheFlow \n\
 fi \n\
 # Start \n\
-jupyter-notebook /notebooks --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
+jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
 RUN chmod +x /opt/anaconda/run_jupyter.sh
 
