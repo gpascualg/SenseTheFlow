@@ -8,8 +8,17 @@ from tqdm import tqdm
 from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
-from cv2 import resize
-import cv2
+
+try:
+    from cv2 import resize
+except:
+    from scipy.misc import imresize
+   
+    def resize(image, size):
+        if image.ndims == 2:
+            return imresize(image, size, mode='F')
+        return np.dstack(imresize(x, size, mode='F') for x in np.rollaxis(image, 2))
+
 
 # Base class to load data in batches
 class DataLoader(object):
@@ -112,11 +121,11 @@ class DataLoader(object):
             #if width != 256 or height != 256:
             #    print width, height
             
-            img_width = cv2.resize(img, (width, width))
-            img_width = cv2.resize(img_width, (64, 64))
+            img_width = resize(img, (width, width))
+            img_width = resize(img_width, (64, 64))
             
-            img_height = cv2.resize(img, (height, height))
-            img_height = cv2.resize(img_height, (64, 64))
+            img_height = resize(img, (height, height))
+            img_height = resize(img_height, (64, 64))
             
             
             return img_width, img_height
