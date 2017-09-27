@@ -115,7 +115,8 @@ class DataLoader(object):
     # Processes an image
     def process_image(self, img):
         # Convert to float and scale
-        #img = img.astype(np.float32) * self.scale
+        img = img.astype(np.float32) * self.scale
+
         # Take image within deformation in one axis
         if self.no_deformation:
             width, height = img.shape[:2]
@@ -398,16 +399,17 @@ except Exception as e:
 
 class CustomLoader(DataLoader):
     def __init__(self, **kwargs):
-        super(CustomLoader, self).__init__(**kwargs)
-        
         if 'get_one' not in kwargs:
             raise ValueError('Expecting get_one in parameters')
 
-        if type(self.file_path) != dict:
+        if type(kwargs['file_path']) != dict:
             raise ValueError('Param file_path should be a dictionary')
         
         self.get_one = kwargs['get_one']
+        self.file_path = kwargs['file_path']
         self.reset()
+
+        super(CustomLoader, self).__init__(**kwargs)
 
     # Generates a batch
     def gen_batch(self):
