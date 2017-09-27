@@ -19,6 +19,7 @@ class Model(object):
         self.__init = None
         self.__feed_dict = None
         self.__last_feed_dict = None
+        self.__results = None
         
         self.__callbacks = []
         
@@ -50,6 +51,12 @@ class Model(object):
     
     def session(self):
         return self.__session
+
+    def results(self):
+        return self.__results
+
+    def bar(self):
+        return self.__bar
     
         
     def __enter__(self):
@@ -69,9 +76,10 @@ class Model(object):
         else:
             self.__session.run(tf.global_variables_initializer())
         
-        for self.__step in tqdm(range(steps)):
+        self.__bar = tqdm(range(steps))
+        for self.__step in self.__bar:
             self.__last_feed_dict = self.__feed_dict(self)
-            self.__session.run(train_op, self.__last_feed_dict)
+            self.__results = self.__session.run(train_op, self.__last_feed_dict)
             
             for steps, func in self.__callbacks:
                 if self.__step % steps == 0:
