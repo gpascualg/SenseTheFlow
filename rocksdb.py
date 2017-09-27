@@ -3,7 +3,6 @@ import os
 import shutil
 import numpy as np
 from scipy import misc
-import cv2
 import pandas as pd
 import matplotlib.pyplot as plt
 import tqdm as tq # conda install -c conda-forge tqdm
