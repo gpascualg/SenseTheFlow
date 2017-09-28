@@ -24,10 +24,15 @@ def main():
     parser.add_argument('--caffe', action='store_true')
     parser.add_argument('--gpu', action='store_true')
     parser.add_argument('--opencl', action='store_true')
+    parser.add_argument('--ssh', action='store_true')
+    parser.add_argument('--rsa-key')
     parser.add_argument('--push', action='store_true')
     parser.add_argument('--half-precision', action='store_true')
 
     args = parser.parse_args()
+
+    if args.ssh and ('rsa_key' not in args or not args.rsa_key):
+        raise NotImplementedError('Must submit --rsa-key if using --ssh')
     
     data = {
         'python_version27': int(args.python_version) == 2,
@@ -37,7 +42,9 @@ def main():
         'base': 'nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04' if args.gpu else 'ubuntu:16.04',
         'use_cuda': 1 if args.gpu else 0,
         'use_opencl': int(args.opencl),
-        'compute_capabilities': '3.5,5.2,6.1' if args.half_precision else '3.5,5.2'
+        'compute_capabilities': '3.5,5.2,6.1' if args.half_precision else '3.5,5.2',
+        'ssh': int(args.ssh),
+        'rsa_key': '' if not args.ssh else args.rsa_key
     }
 
     write_stack = [(None, True)]

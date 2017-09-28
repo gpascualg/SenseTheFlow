@@ -230,13 +230,18 @@ RUN chmod +x /opt/anaconda/run_jupyter.sh
 
 # SSH #
 #######
-RUN apt-get install -y openssh-server && \
-	mkdir /var/run/sshd
+[[if ssh]]
+ADD {{rsa_key}} /root/.ssh/id_rsa.pub
 
-ENV NOTVISIBLE "in users profile"
-RUN echo "export VISIBLE=now" >> /etc/profile
-ADD ${RSA_KEY} /root/.ssh/id_rsa
+RUN apt-get install -y openssh-server && \
+	mkdir /var/run/sshd && \
+	mkdir -p  ~/.ssh && \
+	chmod 700 ~/.ssh && \
+	cat /root/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
+	chmod 600 ~/.ssh/authorized_keys
+
 EXPOSE 22
+[[endif]]
 
 # Entry point #
 ###############

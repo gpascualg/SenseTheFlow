@@ -139,12 +139,31 @@ then \n\
     pip install git+https://www.github.com/farizrahman4u/keras-contrib.git \n\
     git clone https://github.com/gpascualg/SenseTheFlow.git /opt/python-libs/SenseTheFlow \n\
 fi \n\
+# SSH \n\
+/usr/sbin/sshd \n\
 # Start \n\
 jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
 RUN chmod +x /opt/anaconda/run_jupyter.sh
 
+# SSH #
+#######
+ADD ssh_keys/id_rsa_test.pub /root/.ssh/id_rsa.pub
+
+RUN apt-get install -y openssh-server && \
+	mkdir /var/run/sshd && \
+	mkdir -p  ~/.ssh && \
+	chmod 700 ~/.ssh && \
+	cat /root/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
+	chmod 600 ~/.ssh/authorized_keys
+
+EXPOSE 22
 
 # Entry point #
 ###############
-ENTRYPOINT ["/opt/anaconda/run_jupyter.sh"]
+# Add Tini
+ENV TINI_VERSION v0.16.1
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+ENTRYPOINT ["/tini", "--"]
+CMD ["/opt/anaconda/run_jupyter.sh"]
