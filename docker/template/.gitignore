@@ -1,1 +1,3 @@
 ssh_keys/
+run_files/*
+!run_files/run_template.sh

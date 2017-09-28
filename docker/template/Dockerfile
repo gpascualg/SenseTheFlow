@@ -148,14 +148,13 @@ RUN chmod +x /opt/anaconda/run_jupyter.sh
 
 # SSH #
 #######
-ADD ssh_keys/id_rsa_test.pub /root/.ssh/id_rsa.pub
 
 RUN apt-get install -y openssh-server && \
 	mkdir /var/run/sshd && \
 	mkdir -p  ~/.ssh && \
 	chmod 700 ~/.ssh && \
-	cat /root/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
-	chmod 600 ~/.ssh/authorized_keys
+	touch /root/.ssh/authorized_keys && \
+	chmod 600 /root/.ssh/authorized_keys
 
 EXPOSE 22
 

@@ -63,10 +63,13 @@ if [[ $# -ne 1 ]]; then
     exit 4
 fi
 
-echo "ports: $p, ssh: $s"
-
 # Execute docker detached
 nvidia-docker run -tdi $n $p $v $e $1
+
+if [[ $? -ne 0 ]]; then
+    echo "Fatal, could not start docker"
+    exit 1
+fi
 
 # If ssh was active
 if [[ $s == y ]]; then
