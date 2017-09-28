@@ -235,7 +235,7 @@ RUN apt-get install -y openssh-server && \
 
 ENV NOTVISIBLE "in users profile"
 RUN echo "export VISIBLE=now" >> /etc/profile
-
+ADD ${RSA_KEY} /root/.ssh/id_rsa
 EXPOSE 22
 
 # Entry point #
