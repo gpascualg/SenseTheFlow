@@ -69,7 +69,7 @@ ENV TF_CUDA_CLANG=0
 ENV TF_NEED_GCP=0
 ENV TF_CUDA_VERSION=8.0
 ENV TF_CUDNN_VERSION=5
-ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.1
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2
 RUN chmod +x configure && \
 	sed -i -e '3,4d' configure && \
 	sed -i '/^\s*sha256 = /d' tensorflow/workspace.bzl && \
