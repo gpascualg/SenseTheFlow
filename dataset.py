@@ -8,8 +8,18 @@ from tqdm import tqdm
 from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
-from cv2 import resize
-import cv2
+from glob import glob
+
+try:
+    from cv2 import resize
+except:
+    from scipy.misc import imresize
+   
+    def resize(image, size):
+        if image.ndims == 2:
+            return imresize(image, size, mode='F')
+        return np.dstack(imresize(x, size, mode='F') for x in np.rollaxis(image, 2))
+
 
 # Base class to load data in batches
 class DataLoader(object):
@@ -47,7 +57,7 @@ class DataLoader(object):
     def wait_prefetch(self):
         if self.prefetch > 0:
             last = 0
-            print >> sys.stdout, "Prefetching data"
+            print("Prefetching data", file=sys.stdout)
 
             # Show loading bar
             with tqdm(total=self.prefetch) as pbar:
@@ -96,7 +106,7 @@ class DataLoader(object):
     # Reorders the list
     def shuffle(self, a, b):
         if len(a) != len(b):
-            print >> sys.stderr, "Unmatching sets"
+            print("Unmatching sets", file=sys.stdout)
 
         combined = zip(a, b)
         random.shuffle(combined)
@@ -105,18 +115,19 @@ class DataLoader(object):
     # Processes an image
     def process_image(self, img):
         # Convert to float and scale
-        #img = img.astype(np.float32) * self.scale
+        img = img.astype(np.float32) * self.scale
+
         # Take image within deformation in one axis
         if self.no_deformation:
             width, height = img.shape[:2]
             #if width != 256 or height != 256:
             #    print width, height
             
-            img_width = cv2.resize(img, (width, width))
-            img_width = cv2.resize(img_width, (64, 64))
+            img_width = resize(img, (width, width))
+            img_width = resize(img_width, (64, 64))
             
-            img_height = cv2.resize(img, (height, height))
-            img_height = cv2.resize(img_height, (64, 64))
+            img_height = resize(img, (height, height))
+            img_height = resize(img_height, (64, 64))
             
             
             return img_width, img_height
@@ -329,14 +340,11 @@ try:
             return self.num_items
 
 except:
-    print >> sys.stderr, "LMDB Loading won't be available"
+    print("LMDB Loading won't be available", file=sys.stdout)
 
 
 try:
-    try:
-        import rocksdb
-    except:
-        from . import rocksdb
+    from . import rocksdb
 
     # Lmdb loader class
     class RocksLoader(DataLoader):
@@ -385,8 +393,38 @@ try:
             return 0
 
 except Exception as e:
-    print >> sys.stderr, "RocksDB Loading won't be available"
+    print("RocksDB Loading won't be available", file=sys.stderr)
     raise e
+
+
+class CustomLoader(DataLoader):
+    def __init__(self, **kwargs):
+        if 'get_one' not in kwargs:
+            raise ValueError('Expecting get_one in parameters')
+
+        if type(kwargs['file_path']) != dict:
+            raise ValueError('Param file_path should be a dictionary')
+        
+        self.get_one = kwargs['get_one']
+        self.file_path = kwargs['file_path']
+        self.reset()
+
+        super(CustomLoader, self).__init__(**kwargs)
+
+    # Generates a batch
+    def gen_batch(self):
+        pairs = [self.get_one(self) for i in range(self.batch_size)]
+        images, labels = zip(*pairs)
+        images = np.asarray(images)
+        labels = np.asarray(labels)
+
+        return images, labels
+
+    def reset(self):
+        self.data = {name: cycle(sorted(glob(path))) for name, path in self.file_path.items()}
+
+    def __len__(self):
+        return -1
 
 
 # Merges two dicts into a single one
