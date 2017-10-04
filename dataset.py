@@ -5,7 +5,7 @@ import time
 import random
 import numpy as np
 from tqdm import tqdm
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
 from cv2 import resize
