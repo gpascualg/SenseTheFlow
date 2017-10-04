@@ -398,13 +398,14 @@ except Exception as e:
 
 
 class CustomLoader(DataLoader):
-    def __init__(self, **kwargs):
+    def __init__(self, shuffle=True, **kwargs):
         if 'get_one' not in kwargs:
             raise ValueError('Expecting get_one in parameters')
 
         if type(kwargs['file_path']) != dict:
             raise ValueError('Param file_path should be a dictionary')
         
+        self.shuffle = shuffle
         self.get_one = kwargs['get_one']
         self.file_path = kwargs['file_path']
         self.reset()
@@ -421,14 +422,22 @@ class CustomLoader(DataLoader):
         return images, labels
 
     def reset(self):
-        fsorted = {name: sorted(glob(path)) for name, path in self.file_path.items()}
-        sizes = [len(l) for l in fsorted.values()]
-        assert all(s == sizes[0] for s in sizes[1:])
+        def map_param(p):
+            if type(p) == str:
+                return glob(p)
+            return p
+        
+        if self.shuffle:
+            fsorted = {name: sorted(map_param(path)) for name, path in self.file_path.items()}
+            sizes = [len(l) for l in fsorted.values()]
+            assert all(s == sizes[0] for s in sizes[1:])
 
-        perm = list(range(sizes[0]))
-        random.shuffle(perm)
-        self.data = {name: cycle([files[i] for i in perm]) for name, files in fsorted.items()}
-
+            perm = list(range(sizes[0]))
+            random.shuffle(perm)
+            self.data = {name: cycle([files[i] for i in perm]) for name, files in fsorted.items()}
+        else:
+            self.data = {name: cycle(map_param(path)) for name, path in self.file_path.items()}
+            
     def __len__(self):
         return -1
 
