@@ -421,7 +421,13 @@ class CustomLoader(DataLoader):
         return images, labels
 
     def reset(self):
-        self.data = {name: cycle(sorted(glob(path))) for name, path in self.file_path.items()}
+        fsorted = {name: sorted(glob(path)) for name, path in self.file_path.items()}
+        sizes = [len(l) for l in fsorted.values()]
+        assert all(s == sizes[0] for s in sizes[1:])
+
+        perm = list(range(sizes[0]))
+        random.shuffle(perm)
+        self.data = {name: cycle([files[i] for i in perm]) for name, files in fsorted.items()}
 
     def __len__(self):
         return -1
