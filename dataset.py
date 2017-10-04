@@ -333,7 +333,10 @@ except:
 
 
 try:
-    import rocksdb
+    try:
+        import rocksdb
+    except:
+        from . import rocksdb
 
     # Lmdb loader class
     class RocksLoader(DataLoader):
