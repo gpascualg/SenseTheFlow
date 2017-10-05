@@ -16,7 +16,7 @@ except:
     from scipy.misc import imresize
    
     def resize(image, size):
-        if image.ndims == 2:
+        if image.ndim == 2:
             return imresize(image, size, mode='F')
         return np.dstack(imresize(x, size, mode='F') for x in np.rollaxis(image, 2))
 
