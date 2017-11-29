@@ -35,7 +35,7 @@ def main():
         'build_tensorflow': int(args.tensorflow),
         'tensorflow_version': args.tensorflow_version,
         'build_caffe': int(args.caffe),
-        'base': 'nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04' if args.gpu else 'ubuntu:16.04',
+        'base': 'nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04' if args.gpu else 'ubuntu:16.04',
         'use_cuda': 1 if args.gpu else 0,
         'use_opencl': int(args.opencl),
         'compute_capabilities': '3.5,5.2,6.1' if args.half_precision else '3.5,5.2',
