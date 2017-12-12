@@ -1,7 +1,7 @@
 import types
 import tensorflow as tf
 import numpy as np
-from tqdm import tqdm
+from config import bar
 from heapq import heappush, heappop
 
 try:
@@ -76,7 +76,7 @@ class Model(object):
         else:
             self.__session.run(tf.global_variables_initializer())
         
-        self.__bar = tqdm(range(steps))
+        self.__bar = bar(range(steps))
         for self.__step in self.__bar:
             self.__last_feed_dict = self.__feed_dict(self)
             self.__results = self.__session.run(train_op, self.__last_feed_dict)

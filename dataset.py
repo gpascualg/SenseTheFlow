@@ -4,11 +4,12 @@ import sys
 import time
 import random
 import numpy as np
-from tqdm import tqdm
+from config import bar
 from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle
 from glob import glob
+
 
 try:
     from cv2 import resize
@@ -60,7 +61,7 @@ class DataLoader(object):
             print("Prefetching data", file=sys.stdout)
 
             # Show loading bar
-            with tqdm(total=self.prefetch) as pbar:
+            with bar(total=self.prefetch) as pbar:
                 # Wait until completely done
                 while self.prefetch_queue.qsize() < self.prefetch:
                     current = self.prefetch_queue.qsize()
