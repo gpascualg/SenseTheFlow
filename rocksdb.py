@@ -82,14 +82,13 @@ class RocksWildcard(object):
 
     def get_key(self):
         self.last_key += 1
-        return str(self.last_key).zfill(self.max_key_size)
+        return str(self.last_key).zfill(self.max_key_size).encode()
 
 
 
 class RocksNumpy(RocksWildcard):
     def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
         # Initialize parent
-        name = os.path.join(name, 'values.db')
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
 
         # Open sub-databases
@@ -127,10 +126,10 @@ class RocksNumpy(RocksWildcard):
     def close(self):
         self.db.close()
 
-class RocksString(RocksWildcard):
+
+class RocksBytes(RocksWildcard):
     def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
         # Initialize parent
-        name = os.path.join(name, 'labels.db')
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
 
         # Open sub-databases
@@ -138,19 +137,19 @@ class RocksString(RocksWildcard):
 
     
     def put(self, data):
+        assert isinstance(data, bytes)
         key_str = RocksWildcard.get_key(self)
-        data = str(data)
-        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
+        return self.db.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
                                     value_len=len(data))
     
-    def iterate(self, _, cyclic=True):
+    def iterate(self, _=None, cyclic=True):
         itr = self.db.iterator()
 
         while True:
             while itr.valid():
                 ptr, plen = itr.value()
-                data = (ctypes.c_char * plen.value).from_address(ptr)
-                yield str(data.value)
+                label = (ctypes.c_char * plen).from_address(ptr)
+                yield label.raw
 
                 itr.next()
 
@@ -165,43 +164,16 @@ class RocksString(RocksWildcard):
     def close(self):
         self.db.close()
 
-
-class RocksBytes(RocksWildcard):
+class RocksString(RocksBytes):
     def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
-        # Initialize parent
-        name = os.path.join(name, 'labels.db')
-        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
-
-        # Open sub-databases
-        self.db = RocksDB(name, max_key_size)
-
+        RocksBytes.__init__(self, name, max_key_size, append, delete, dtype)
     
     def put(self, data):
-        key_str = RocksWildcard.get_key(self)
-        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
-                                    value_len=len(data))
-    
-    def iterate(self, _, cyclic=True):
-        itr = self.db.iterator()
+        return RocksBytes.put(self, data.encode())
 
-        while True:
-            while itr.valid():
-                ptr, plen = itr.value()
-                label = (ctypes.c_char * label_len.value).from_address(ptr)
-                yield bytes(label.value)
-
-                itr.next()
-
-            itr.first()
-
-            if not cyclic:
-                break
-
-        itr.close()
-        raise Exception("Iterator closed")
-    
-    def close(self):
-        self.db.close()     
+    def iterate(self, _=None, cyclic=True):
+        for value in RocksBytes.iterate(self, _, cyclic):
+            yield value.decode()
 
 
 class RocksIterator(object):
@@ -226,11 +198,11 @@ class RocksIterator(object):
         
     def key(self):
         rlen = ctypes.c_size_t()
-        return RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen)), rlen
+        return RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen)), rlen.value
         
     def value(self):
         rlen = ctypes.c_size_t()
-        return RocksDLL.get().rocksdb_iter_value(self.itr, ctypes.pointer(rlen)), rlen
+        return RocksDLL.get().rocksdb_iter_value(self.itr, ctypes.pointer(rlen)), rlen.value
         
     def close(self):
         RocksDLL.get().rocksdb_iter_destroy(self.itr)
@@ -271,7 +243,7 @@ class RocksDB(object):
         # Create
         self.db_err = ctypes.c_char_p()
         self.db_err_ptr = ctypes.pointer(self.db_err)
-        self.db = dll.rocksdb_open(opts, name, self.db_err_ptr)
+        self.db = dll.rocksdb_open(opts, name.encode(), self.db_err_ptr)
         self.check_error()
         
         # Create read/write opts
@@ -298,7 +270,7 @@ class RocksDB(object):
         if key_len == 0: key_len = len(key)
         
         rlen = ctypes.c_size_t()
-        ptr = RocksDLL.get().rocksdb_get(self.db, self.read_opts, key, key_len, ctypes.byref(rlen), self.db_err_ptr);
+        ptr = RocksDLL.get().rocksdb_get(self.db, self.read_opts, key.encode(), key_len, ctypes.pointer(rlen), self.db_err_ptr);
         self.check_error()
     
         return ptr, rlen
@@ -363,7 +335,7 @@ class RocksDLL(object):
             
             dll.rocksdb_get.restype = ctypes.c_char_p
             dll.rocksdb_get.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
-                                        ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)]
+                                        ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_char_p)]
             
             dll.rocksdb_create_iterator.restype = ctypes.c_void_p
             dll.rocksdb_create_iterator.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
