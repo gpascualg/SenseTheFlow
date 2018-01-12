@@ -1,0 +1,176 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+BatchNorm	../layers.py	/^class BatchNorm(Layer):$/;"	kind:class	line:182
+Conv	../layers.py	/^class Conv(Layer):$/;"	kind:class	line:66
+CustomLoader	../dataset.py	/^class CustomLoader(DataLoader):$/;"	kind:class	line:400
+DataLoader	../dataset.py	/^class DataLoader(object):$/;"	kind:class	line:25
+Dataset	../dataset.py	/^class Dataset(object):$/;"	kind:class	line:445
+DefaultLoader	../dataset.py	/^    DefaultLoader = LmdbLoader$/;"	kind:variable	line:440
+DefaultLoader	../dataset.py	/^    DefaultLoader = TextLoader$/;"	kind:variable	line:442
+Defaults	../layers.py	/^    Defaults = {$/;"	kind:variable	line:31
+Defaults	../network.py	/^class Defaults(object):$/;"	kind:class	line:5
+Dense	../layers.py	/^class Dense(Layer):$/;"	kind:class	line:162
+Layer	../layers.py	/^class Layer(object):$/;"	kind:class	line:30
+LearningRateDecay	../model.py	/^class LearningRateDecay(object):$/;"	kind:class	line:79
+LmdbLoader	../dataset.py	/^    class LmdbLoader(DataLoader):$/;"	kind:class	line:266
+MASK_TYPE_A	../layers.py	/^MASK_TYPE_A = "A"$/;"	kind:variable	line:113
+MASK_TYPE_B	../layers.py	/^MASK_TYPE_B = "B"$/;"	kind:variable	line:114
+MaskedConv	../layers.py	/^class MaskedConv(Conv):$/;"	kind:class	line:115
+MaxPool	../layers.py	/^class MaxPool(Layer):$/;"	kind:class	line:146
+MixtureDensity	../layers.py	/^class MixtureDensity(Layer):$/;"	kind:class	line:212
+MixtureDensity2D	../layers.py	/^class MixtureDensity2D(Layer):$/;"	kind:class	line:342
+Model	../model.py	/^class Model(object):$/;"	kind:class	line:122
+NumpyLoader	../dataset.py	/^class NumpyLoader(DataLoader):$/;"	kind:class	line:237
+Optimizer	../model.py	/^class Optimizer(object):$/;"	kind:class	line:88
+RocksDB	../rocksdb.py	/^class RocksDB(object):    $/;"	kind:class	line:139
+RocksDLL	../rocksdb.py	/^class RocksDLL(object):$/;"	kind:class	line:216
+RocksIterator	../rocksdb.py	/^class RocksIterator(object):$/;"	kind:class	line:107
+RocksLoader	../dataset.py	/^    class RocksLoader(DataLoader):$/;"	kind:class	line:350
+RocksStore	../rocksdb.py	/^class RocksStore(object):$/;"	kind:class	line:12
+StableMixtureDensity	../layers.py	/^class StableMixtureDensity(Layer):$/;"	kind:class	line:262
+TextLoader	../dataset.py	/^class TextLoader(DataLoader):$/;"	kind:class	line:170
+__call__	../layers.py	/^    def __call__(self, x):$/;"	kind:member	line:153
+__call__	../layers.py	/^    def __call__(self, x):$/;"	kind:member	line:168
+__call__	../layers.py	/^    def __call__(self, x):$/;"	kind:member	line:189
+__call__	../layers.py	/^    def __call__(self, x):$/;"	kind:member	line:77
+__call__	../layers.py	/^    def __call__(self, x, y):$/;"	kind:member	line:218
+__call__	../layers.py	/^    def __call__(self, x, y):$/;"	kind:member	line:268
+__call__	../layers.py	/^    def __call__(self, x, y1, y2):$/;"	kind:member	line:349
+__enter__	../network.py	/^    def __enter__(self):$/;"	kind:member	line:17
+__exit__	../network.py	/^    def __exit__(self, type, value, traceback):$/;"	kind:member	line:20
+__init__	../dataset.py	/^        def __init__(self, **kwargs):$/;"	kind:member	line:267
+__init__	../dataset.py	/^        def __init__(self, **kwargs):$/;"	kind:member	line:351
+__init__	../dataset.py	/^    def __init__(self, **kwargs):$/;"	kind:member	line:238
+__init__	../dataset.py	/^    def __init__(self, **kwargs):$/;"	kind:member	line:401
+__init__	../dataset.py	/^    def __init__(self, config={}, dtype=DefaultLoader):$/;"	kind:member	line:446
+__init__	../dataset.py	/^    def __init__(self, file_path, data_path='.\/', mean=None, resize=None, crop=None, random_crop = None, no_deformation = False,$/;"	kind:member	line:26
+__init__	../dataset.py	/^    def __init__(self, shuffle=True, **kwargs):$/;"	kind:member	line:171
+__init__	../layers.py	/^    def __init__(self, name, **config):$/;"	kind:member	line:40
+__init__	../layers.py	/^    def __init__(self, name, k, **config):$/;"	kind:member	line:213
+__init__	../layers.py	/^    def __init__(self, name, k, **config):$/;"	kind:member	line:263
+__init__	../layers.py	/^    def __init__(self, name, k, input_tensors=None, **config):$/;"	kind:member	line:343
+__init__	../layers.py	/^    def __init__(self, name, kernel_size, output_size, mask_type=None, stride_size=(1, 1), group=1, **config):$/;"	kind:member	line:116
+__init__	../layers.py	/^    def __init__(self, name, kernel_size, output_size, stride_size=(1, 1), group=1, **config):$/;"	kind:member	line:67
+__init__	../layers.py	/^    def __init__(self, name, kernel_size, stride_size=(2,2), **config):$/;"	kind:member	line:147
+__init__	../layers.py	/^    def __init__(self, name, output_size, **config):$/;"	kind:member	line:163
+__init__	../layers.py	/^    def __init__(self, name, output_size, phase_train, **config):$/;"	kind:member	line:183
+__init__	../model.py	/^    def __init__(self, device):$/;"	kind:member	line:123
+__init__	../model.py	/^    def __init__(self, dtype, learning_rate, *args, **kwargs):$/;"	kind:member	line:89
+__init__	../model.py	/^    def __init__(self, steps, decay, start, staircase):$/;"	kind:member	line:80
+__init__	../network.py	/^    def __init__(self, padding='SAME', wd=None, device='\/cpu:0'):$/;"	kind:member	line:9
+__init__	../rocksdb.py	/^    def __init__(self, itr):$/;"	kind:member	line:108
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size):$/;"	kind:member	line:140
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:13
+__init__.py	../__init__.py	1;"	kind:file	line:1
+__len__	../dataset.py	/^        def __len__(self):$/;"	kind:member	line:339
+__len__	../dataset.py	/^        def __len__(self):$/;"	kind:member	line:392
+__len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:232
+__len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:251
+__len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:426
+__next__	../rocksdb.py	/^    def __next__(self):$/;"	kind:member	line:118
+avg_pool	../network.py	/^def avg_pool(input, k_h, k_w, s_h, s_w, name, padding=Defaults.padding):$/;"	kind:function	line:90
+batch_norm	../network.py	/^def batch_norm(x, n_out, phase_train, name='bn'):$/;"	kind:function	line:134
+batch_prefetcher	../dataset.py	/^    def batch_prefetcher(x, self):$/;"	kind:member	line:81
+batch_size	../dataset.py	/^    def batch_size(self):$/;"	kind:member	line:472
+build.py	../docker/template/build.py	1;"	kind:file	line:1
+caffe_root	../dataset.py	/^    caffe_root = '\/home\/deep\/caffe'$/;"	kind:variable	line:259
+check_error	../rocksdb.py	/^    def check_error(self):$/;"	kind:member	line:182
+clear	../model.py	/^    def clear(self, sess):$/;"	kind:member	line:134
+clip	../model.py	/^    def clip(self, variable, clipping):$/;"	kind:member	line:101
+close	../dataset.py	/^        def close(self):$/;"	kind:member	line:323
+close	../dataset.py	/^        def close(self):$/;"	kind:member	line:382
+close	../dataset.py	/^    def close(self):$/;"	kind:member	line:162
+close	../dataset.py	/^    def close(self):$/;"	kind:member	line:489
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:102
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:135
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:212
+concat	../network.py	/^def concat(inputs, axis, name):$/;"	kind:function	line:105
+conv	../network.py	/^def conv(input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=None, group=1, trainable=True):$/;"	kind:function	line:59
+dataset.py	../dataset.py	1;"	kind:file	line:1
+dense	../network.py	/^def dense(input, output_size, activation=None):$/;"	kind:function	line:116
+dropout	../network.py	/^def dropout(input, keep_prob):$/;"	kind:function	line:131
+fc	../network.py	/^def fc(input, num_in, num_out, name, relu=True):$/;"	kind:function	line:108
+fetch	../layers.py	/^                def fetch(x, o):$/;"	kind:function	line:402
+first	../rocksdb.py	/^    def first(self):$/;"	kind:member	line:112
+gen_batch	../dataset.py	/^        def gen_batch(self):$/;"	kind:member	line:309
+gen_batch	../dataset.py	/^        def gen_batch(self):$/;"	kind:member	line:373
+gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:211
+gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:244
+gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:415
+generate_ensemble	../layers.py	/^        def generate_ensemble(out_pi, out_mu, out_sigma, M = 1):$/;"	kind:function	line:308
+get	../rocksdb.py	/^    def get():$/;"	kind:member	line:220
+get_one	../dataset.py	/^        def get_one(self):$/;"	kind:member	line:290
+get_one	../dataset.py	/^        def get_one(self):$/;"	kind:member	line:366
+get_pi_idx	../layers.py	/^        def get_pi_idx(x, pdf):$/;"	kind:function	line:298
+get_pi_idx	../layers.py	/^        def get_pi_idx(x, pdf):$/;"	kind:function	line:454
+gram_matrix	../network.py	/^def gram_matrix(input, name, scale=1.0):$/;"	kind:function	line:164
+has	../layers.py	/^                def has(x, o):$/;"	kind:function	line:393
+iterate	../rocksdb.py	/^    def iterate(self, shape, cyclic=True):$/;"	kind:member	line:73
+iterator	../rocksdb.py	/^    def iterator(self):$/;"	kind:member	line:207
+key	../rocksdb.py	/^    def key(self):$/;"	kind:member	line:127
+last	../rocksdb.py	/^    def last(self):$/;"	kind:member	line:115
+layers.py	../layers.py	1;"	kind:file	line:1
+load	../network.py	/^def load(data_path, session):$/;"	kind:function	line:27
+load_labels	../dataset.py	/^        def load_labels(self, **kwargs):$/;"	kind:member	line:280
+load_test	../dataset.py	/^    def load_test(self, dtype=TextLoader, **kwargs):$/;"	kind:member	line:486
+load_train	../dataset.py	/^    def load_train(self, dtype=TextLoader, **kwargs):$/;"	kind:member	line:482
+load_with_skip	../network.py	/^def load_with_skip(data_path, session, skip_layer):$/;"	kind:function	line:35
+log_prob	../layers.py	/^    def log_prob(self, out_pi, out_mu1, out_mu2, out_sigma1, out_sigma2, out_corr, y1, y2):$/;"	kind:member	line:446
+log_prob	../layers.py	/^    def log_prob(self, out_pi, out_sigma, out_mu, y):$/;"	kind:member	line:238
+log_prob	../layers.py	/^    def log_prob(self, out_pi, out_sigma, out_mu, y):$/;"	kind:member	line:289
+logpdf	../layers.py	/^    def logpdf(self, x, loc, scale):$/;"	kind:member	line:285
+lrn	../network.py	/^def lrn(input, radius, alpha, beta, name, bias=1.0):$/;"	kind:function	line:97
+main	../docker/template/build.py	/^def main():$/;"	kind:function	line:17
+make_var	../layers.py	/^    def make_var(self, name, shape):$/;"	kind:member	line:45
+make_var	../network.py	/^def make_var(name, shape, trainable=True, wd=None):$/;"	kind:function	line:44
+map_gvs	../model.py	/^        def map_gvs(gv):$/;"	kind:function	line:111
+max_pool	../network.py	/^def max_pool(input, k_h, k_w, s_h, s_w, name, padding=Defaults.padding):$/;"	kind:function	line:83
+mean_var_with_update	../layers.py	/^            def mean_var_with_update():$/;"	kind:function	line:199
+mean_var_with_update	../network.py	/^        def mean_var_with_update():$/;"	kind:function	line:153
+merge_two_dicts	../dataset.py	/^def merge_two_dicts(x, y):$/;"	kind:function	line:431
+minimize	../model.py	/^    def minimize(self, loss, global_step=None, var_list=None):$/;"	kind:member	line:106
+model.py	../model.py	1;"	kind:file	line:1
+network.py	../network.py	1;"	kind:file	line:1
+next	../rocksdb.py	/^    def next(self):$/;"	kind:member	line:121
+next_batch	../dataset.py	/^    def next_batch(self):$/;"	kind:member	line:96
+normal	../layers.py	/^    def normal(self, y, mu, sigma):$/;"	kind:member	line:232
+normal	../layers.py	/^    def normal(self, y1, y2, mu1, mu2, sigma1, sigma2, rho):$/;"	kind:member	line:435
+now	../model.py	/^    def now(self):$/;"	kind:member	line:130
+padding	../network.py	/^    padding = 'SAME'$/;"	kind:variable	line:6
+parse_config	../layers.py	/^def parse_config(f, *args, **kwargs):$/;"	kind:function	line:12
+pre_call	../layers.py	/^    def pre_call(self, kernel, biases):        $/;"	kind:member	line:121
+process_image	../dataset.py	/^    def process_image(self, img):$/;"	kind:member	line:116
+put	../rocksdb.py	/^    def put(self, label, data):$/;"	kind:member	line:57
+read	../rocksdb.py	/^    def read(self, key, key_len=0):$/;"	kind:member	line:197
+read_image	../dataset.py	/^        def read_image(self, path):$/;"	kind:member	line:285
+relu	../network.py	/^def relu(input, name):$/;"	kind:function	line:80
+reset	../dataset.py	/^        def reset(self):$/;"	kind:member	line:333
+reset	../dataset.py	/^        def reset(self):$/;"	kind:member	line:389
+reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:159
+reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:229
+reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:248
+reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:423
+resize	../dataset.py	/^    def resize(image, size):$/;"	kind:function	line:18
+rocksdb.py	../rocksdb.py	1;"	kind:file	line:1
+rocksdll	../rocksdb.py	/^    rocksdll = None$/;"	kind:variable	line:217
+sample	../layers.py	/^    def sample(self, pi, mus1, mus2, sigmas1, sigmas2, corr, num=256*256):$/;"	kind:member	line:453
+sample_from_mixture	../layers.py	/^    def sample_from_mixture(self, pred_weights, pred_means, pred_std, amount):$/;"	kind:member	line:245
+sample_from_mixture	../layers.py	/^    def sample_from_mixture(self, pred_weights, pred_means, pred_std, amount):$/;"	kind:member	line:297
+sample_gaussian_2d	../layers.py	/^        def sample_gaussian_2d(mu1, mu2, s1, s2, rho):$/;"	kind:function	line:463
+save	../model.py	/^    def save(self, sess, step, save_path):$/;"	kind:member	line:138
+shuffle	../dataset.py	/^    def shuffle(self, a, b):$/;"	kind:member	line:107
+softmax	../network.py	/^def softmax(input, name):$/;"	kind:function	line:128
+start_prefetch	../dataset.py	/^    def start_prefetch(self):$/;"	kind:member	line:48
+subprocess_cmd	../docker/template/build.py	/^def subprocess_cmd(command, cin=None):$/;"	kind:function	line:8
+train	../model.py	/^    def train(self, optimizer, num_iters, var_list=None,$/;"	kind:member	line:144
+valid	../rocksdb.py	/^    def valid(self):$/;"	kind:member	line:124
+value	../rocksdb.py	/^    def value(self):$/;"	kind:member	line:131
+vgg16_small	../model.py	/^def vgg16_small(x):$/;"	kind:function	line:15
+vgg16_smallest	../model.py	/^def vgg16_smallest(x):$/;"	kind:function	line:49
+wait_prefetch	../dataset.py	/^    def wait_prefetch(self):$/;"	kind:member	line:57
+wd	../network.py	/^    wd = None$/;"	kind:variable	line:7
+write	../rocksdb.py	/^    def write(self, key, value, key_len=0, value_len=0):$/;"	kind:member	line:187
