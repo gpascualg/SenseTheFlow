@@ -1,4 +1,4 @@
-FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04
+FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
 MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 
 # Update + dependencies #
@@ -16,8 +16,8 @@ RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.4.0-Linux-x86_64.sh &
 	rm Anaconda3-4.4.0-Linux-x86_64.sh
 
 ## Export path
-ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH
-ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH \
+	LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 ## Configure anaconda
 EXPOSE 8888
@@ -47,7 +47,7 @@ RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.5.4/bazel
 ##################
 RUN git clone https://github.com/tensorflow/tensorflow
 WORKDIR tensorflow
-RUN git checkout v1.3.1
+RUN git checkout v1.4.0
 
 ## Hack to make tensorflow build process use non-standard python location
 RUN sed -i \
@@ -55,29 +55,33 @@ RUN sed -i \
 	third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
 
 ## Setup bazel configuration variables
-ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python
-ENV USE_DEFAULT_PYTHON_LIB_PATH=1
-ENV TF_NEED_MKL=1
-ENV TF_DOWNLOAD_MKL=1
-ENV TF_NEED_CUDA=1
-ENV TF_NEED_OPENCL=0
-ENV TF_NEED_JEMALLOC=1
-ENV TF_NEED_HDFS=0
-ENV TF_NEED_GDR=0
-ENV TF_NEED_MPI=0
-ENV TF_ENABLE_XLA=1
-ENV TF_CUDA_CLANG=0
-ENV TF_NEED_GCP=0
-ENV TF_CUDA_VERSION=8.0
-ENV TF_CUDNN_VERSION=5
-ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.1
+ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python \
+	USE_DEFAULT_PYTHON_LIB_PATH=1 \
+	TF_NEED_MKL=1 \
+	TF_DOWNLOAD_MKL=1 \ 
+	TF_NEED_CUDA=1 \
+	TF_NEED_OPENCL=0 \ 
+	TF_NEED_JEMALLOC=1 \
+	TF_NEED_HDFS=0 \
+	TF_NEED_GDR=0 \
+	TF_NEED_MPI=0 \
+	TF_ENABLE_XLA=1 \
+	TF_CUDA_CLANG=0 \
+	TF_NEED_GCP=0 \
+	TF_CUDA_VERSION=9.0 \
+	TF_CUDNN_VERSION=7 \
+        CUDNN_INSTALL_PATH=/usr/lib/x86_64-linux-gnu \
+	TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2
+
 RUN chmod +x configure && \
 	sed -i -e '3,4d' configure && \
 	sed -i '/^\s*sha256 = /d' tensorflow/workspace.bzl && \
 	./configure
 
 ## Build and install
-RUN bazel build -s  --config=opt --config=cuda --verbose_failures //tensorflow/tools/pip_package:build_pip_package
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+	LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
+	bazel build -s  --config=opt --config=cuda --verbose_failures --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --jobs=$(grep -c '^processor' /proc/cpuinfo) //tensorflow/tools/pip_package:build_pip_package
 
 RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg && \
 	pip install /tmp/tensorflow_pkg/$(ls /tmp/tensorflow_pkg)
@@ -89,13 +93,12 @@ WORKDIR ..
 
 # Fetch RocksDB #
 #################
-RUN git clone https://github.com/facebook/rocksdb.git
-WORKDIR rocksdb
-RUN git checkout v5.3.6
-RUN mkdir build
-WORKDIR build
-RUN cmake ..
-RUN make -j $(grep -c '^processor' /proc/cpuinfo) && make install
+RUN git clone https://github.com/facebook/rocksdb.git && \
+	mkdir rocksdb/build
+WORKDIR rocksdb/build
+RUN git checkout v5.3.6 && \
+	cmake .. && \
+	make -j $(grep -c '^processor' /proc/cpuinfo) && make install
 WORKDIR ../..
 RUN rm -rf rocksdb
 
