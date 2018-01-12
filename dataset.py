@@ -4,7 +4,7 @@ import sys
 import time
 import random
 import numpy as np
-from config import bar
+from .config import bar
 from queue import Queue
 from threading import Thread, Lock, BoundedSemaphore
 from itertools import cycle

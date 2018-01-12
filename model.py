@@ -1,7 +1,7 @@
 import types
 import tensorflow as tf
 import numpy as np
-from config import bar
+from .config import bar
 from heapq import heappush, heappop
 
 try:
