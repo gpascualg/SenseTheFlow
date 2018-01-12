@@ -31,7 +31,7 @@ class RocksStore(object):
     def iterate(self, shape, cyclic=True):
         while True:
             itrs = [db.iterate() for db in self.dbs()]
-            yield (next(itr) for itr in itrs)
+            yield [next(itr) for itr in itrs]
     
     def close(self):
         for db in self.dbs:
@@ -80,14 +80,14 @@ class RocksWildcard(object):
             self.last_key = int((ctypes.c_char * key_len.value).from_address(key_ptr).value)
 
 
-    def put(self, label, data):
+    def get_key(self):
         self.last_key += 1
         return str(self.last_key).zfill(self.max_key_size)
 
 
 
 class RocksNumpy(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32)
+    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
         # Initialize parent
         name = os.path.join(name, 'values.db')
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
@@ -95,8 +95,8 @@ class RocksNumpy(RocksWildcard):
         # Open sub-databases
         self.db = RocksDB(name, max_key_size)
 
-    def put(self, label, data):
-        key_str = RocksWildcard.put(self, label, data)
+    def put(self, data):
+        key_str = RocksWildcard.get_key(self)
         contiguous = data.astype(self.dtype).copy(order='C')
         
         return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
@@ -128,7 +128,7 @@ class RocksNumpy(RocksWildcard):
         self.db.close()
 
 class RocksString(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32)
+    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
         # Initialize parent
         name = os.path.join(name, 'labels.db')
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
@@ -137,11 +137,11 @@ class RocksString(RocksWildcard):
         self.db = RocksDB(name, max_key_size)
 
     
-    def put(self, label, data):
-        key_str = RocksWildcard.put(self, label, data)
-        label = str(label)
-        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(label), key_len=self.max_key_size,
-                                    value_len=len(label))
+    def put(self, data):
+        key_str = RocksWildcard.get_key(self)
+        data = str(data)
+        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
+                                    value_len=len(data))
     
     def iterate(self, _, cyclic=True):
         itr = self.db.iterator()
@@ -149,8 +149,8 @@ class RocksString(RocksWildcard):
         while True:
             while itr.valid():
                 ptr, plen = itr.value()
-                label = (ctypes.c_char * label_len.value).from_address(ptr)
-                yield str(label.value)
+                data = (ctypes.c_char * plen.value).from_address(ptr)
+                yield str(data.value)
 
                 itr.next()
 
@@ -164,8 +164,46 @@ class RocksString(RocksWildcard):
     
     def close(self):
         self.db.close()
-        
-        
+
+
+class RocksBytes(RocksWildcard):
+    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
+        # Initialize parent
+        name = os.path.join(name, 'labels.db')
+        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
+
+        # Open sub-databases
+        self.db = RocksDB(name, max_key_size)
+
+    
+    def put(self, data):
+        key_str = RocksWildcard.get_key(self)
+        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
+                                    value_len=len(data))
+    
+    def iterate(self, _, cyclic=True):
+        itr = self.db.iterator()
+
+        while True:
+            while itr.valid():
+                ptr, plen = itr.value()
+                label = (ctypes.c_char * label_len.value).from_address(ptr)
+                yield bytes(label.value)
+
+                itr.next()
+
+            itr.first()
+
+            if not cyclic:
+                break
+
+        itr.close()
+        raise Exception("Iterator closed")
+    
+    def close(self):
+        self.db.close()     
+
+
 class RocksIterator(object):
     def __init__(self, itr):
         self.itr = itr
