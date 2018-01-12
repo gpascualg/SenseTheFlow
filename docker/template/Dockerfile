@@ -39,14 +39,15 @@ VOLUME ["/data"]
 # 0.4.5 was working
 RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.5.4/bazel-0.5.4-installer-linux-x86_64.sh && \
 	chmod +x bazel-0.5.4-installer-linux-x86_64.sh && \
-	./bazel-0.5.4-installer-linux-x86_64.sh --user
+	./bazel-0.5.4-installer-linux-x86_64.sh --user && \
+	rm ./bazel-0.5.4-installer-linux-x86_64.sh
 
 
 # Get tensorflow #
 ##################
 RUN git clone https://github.com/tensorflow/tensorflow
 WORKDIR tensorflow
-RUN git checkout r1.3
+RUN git checkout v1.3.1
 
 ## Hack to make tensorflow build process use non-standard python location
 RUN sed -i \
@@ -69,7 +70,7 @@ ENV TF_CUDA_CLANG=0
 ENV TF_NEED_GCP=0
 ENV TF_CUDA_VERSION=8.0
 ENV TF_CUDNN_VERSION=5
-ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.1
 RUN chmod +x configure && \
 	sed -i -e '3,4d' configure && \
 	sed -i '/^\s*sha256 = /d' tensorflow/workspace.bzl && \
@@ -96,7 +97,7 @@ WORKDIR build
 RUN cmake ..
 RUN make -j $(grep -c '^processor' /proc/cpuinfo) && make install
 WORKDIR ../..
-
+RUN rm -rf rocksdb
 
 
 
@@ -142,7 +143,7 @@ fi \n\
 # SSH \n\
 /usr/sbin/sshd \n\
 # Start \n\
-jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
+jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py &>/dev/null" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
 RUN chmod +x /opt/anaconda/run_jupyter.sh
 

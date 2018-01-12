@@ -56,7 +56,8 @@ VOLUME ["/data"]
 # 0.4.5 was working
 RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.5.4/bazel-0.5.4-installer-linux-x86_64.sh && \
 	chmod +x bazel-0.5.4-installer-linux-x86_64.sh && \
-	./bazel-0.5.4-installer-linux-x86_64.sh --user
+	./bazel-0.5.4-installer-linux-x86_64.sh --user && \
+	rm ./bazel-0.5.4-installer-linux-x86_64.sh
 
 
 # Get tensorflow #
@@ -118,7 +119,7 @@ WORKDIR build
 RUN cmake ..
 RUN make -j $(grep -c '^processor' /proc/cpuinfo) && make install
 WORKDIR ../..
-
+RUN rm -rf rocksdb
 
 [[if build_caffe]]
 
@@ -224,7 +225,7 @@ fi \n\
 # SSH \n\
 /usr/sbin/sshd \n\
 # Start \n\
-jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py > jupyter.log" > /opt/anaconda/run_jupyter.sh.tpl
+jupyter-notebook /notebooks --allow-root --config=/etc/jupyter-notebook.py &>/dev/null" > /opt/anaconda/run_jupyter.sh.tpl
 RUN sed 's/ *$//' /opt/anaconda/run_jupyter.sh.tpl > /opt/anaconda/run_jupyter.sh
 RUN chmod +x /opt/anaconda/run_jupyter.sh
 
