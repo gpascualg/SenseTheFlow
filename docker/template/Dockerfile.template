@@ -22,13 +22,13 @@ RUN apt-get update && \
 # Get anaconda #
 ################
 [[if python_version27]]
-RUN curl -OL https://repo.continuum.io/archive/Anaconda2-4.4.0-Linux-x86_64.sh && \
-	bash Anaconda2-4.4.0-Linux-x86_64.sh -b -p /opt/anaconda && \
-	rm Anaconda2-4.4.0-Linux-x86_64.sh
+RUN curl -OL https://repo.continuum.io/archive/Anaconda2-5.0.1-Linux-x86_64.sh && \
+	bash Anaconda2-5.0.1-Linux-x86_64.sh -b -p /opt/anaconda && \
+	rm Anaconda2-5.0.1-Linux-x86_64.sh
 [[else]]
-RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.4.0-Linux-x86_64.sh && \
-	bash Anaconda3-4.4.0-Linux-x86_64.sh -b -p /opt/anaconda && \
-	rm Anaconda3-4.4.0-Linux-x86_64.sh
+RUN curl -OL https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh && \
+	bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p /opt/anaconda && \
+	rm Anaconda3-5.0.1-Linux-x86_64.sh
 [[endif]]
 
 ## Export path
@@ -196,7 +196,7 @@ ENV PYTHONPATH=/notebooks:/opt/python-libs
 
 
 # Configure jupyter at startup
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 RUN echo "#!/bin/bash\n\
 echo 'Generating config'\n\
 jupyter-notebook --allow-root --generate-config --config=/etc/jupyter-notebook.py\n\
