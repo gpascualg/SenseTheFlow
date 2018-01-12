@@ -347,8 +347,43 @@ except:
 try:
     from . import rocksdb
 
-    # Lmdb loader class
     class RocksLoader(DataLoader):
+        def __init__(self, **kwargs):
+            if 'get_one' not in kwargs:
+                raise ValueError('Expecting get_one in parameters')
+
+            if type(kwargs['file_path']) != dict:
+                raise ValueError('Param file_path should be a dictionary')
+            
+             # Open the databse
+            kwargs['dbtype'] = 'float' if 'dbtype' not in kwargs else kwargs['dbtype']
+
+            self.get_one = kwargs['get_one']
+            self.dbname = kwargs['file_path']
+            self.max_key_size = kwargs['max_key_size']
+            self.dbtype = kwargs['dbtype']
+            self.itr_size = kwargs['iterator_size']
+            self.db = rocksdb.RocksStore(self.dbname, max_key_size=self.max_key_size, dtype=self.dbtype)
+            self.itr = self.db.iterate(self.itr_size)
+
+            super(RocksLoader, self).__init__(**kwargs)
+
+        # Generates a batch
+        def gen_batch(self):
+            pairs = [self.get_one(self) for i in range(self.batch_size)]
+            images, labels = zip(*pairs)
+            images = np.asarray(images)
+            labels = np.asarray(labels)
+
+            return images, labels
+
+        def reset(self):
+            self.data = {name: cycle(sorted(glob(path))) for name, path in self.file_path.items()}
+
+        def __len__(self):
+            return -1
+
+    class (DataLoader):
         def __init__(self, **kwargs):
             # Open the databse
             kwargs['dbtype'] = 'float' if 'dbtype' not in kwargs else kwargs['dbtype']
