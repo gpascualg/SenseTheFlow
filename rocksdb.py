@@ -30,7 +30,7 @@ class RocksStore(object):
 
     def iterate(self, shape, cyclic=True):
         while True:
-            itrs = [db.iterate() for db in self.dbs()]
+            itrs = [db.iterate() for db in self.dbs]
             yield [next(itr) for itr in itrs]
     
     def close(self):

@@ -87,8 +87,8 @@ class DataLoader(object):
             # Keep looping until it is inserted
             while not self.prefetch_stop:
                 try:
-                    # Insert batch, raise exception if not inserted by 1 sec.
-                    self.prefetch_queue.put(batch, True, 1.0)
+                    # Insert batch, raise exception if not inserted by 0.1 sec.
+                    self.prefetch_queue.put(batch, True, 0.1)
                     break
                 except:
                     pass
@@ -383,7 +383,7 @@ try:
         def __len__(self):
             return -1
 
-    class (DataLoader):
+    class RocksLoader_2(DataLoader):
         def __init__(self, **kwargs):
             # Open the databse
             kwargs['dbtype'] = 'float' if 'dbtype' not in kwargs else kwargs['dbtype']
@@ -434,7 +434,7 @@ except Exception as e:
 
 
 class CustomLoader(DataLoader):
-    def __init__(self, shuffle=True, **kwargs):
+    def __init__(self, shuffle=True, squeeze_axis0=False, **kwargs):
         if 'get_one' not in kwargs:
             raise ValueError('Expecting get_one in parameters')
 
@@ -442,6 +442,7 @@ class CustomLoader(DataLoader):
             raise ValueError('Param file_path should be a dictionary')
         
         self.shuffle = shuffle
+        self.squeeze_axis0 = squeeze_axis0
         self.get_one = kwargs['get_one']
         self.file_path = kwargs['file_path']
         self.reset()
@@ -455,12 +456,21 @@ class CustomLoader(DataLoader):
         images = np.asarray(images)
         labels = np.asarray(labels)
 
+        if self.squeeze_axis0:
+            images = images[0]
+            labels = labels[0]
+
         return images, labels
 
     def reset(self):
         def map_param(p):
             if type(p) == str:
                 return glob(p)
+            return p
+
+        def cycle_if(p):
+            if isinstance(p, (list, tuple)):
+                return cycle(p)
             return p
         
         if self.shuffle:
@@ -470,9 +480,9 @@ class CustomLoader(DataLoader):
 
             perm = list(range(sizes[0]))
             random.shuffle(perm)
-            self.data = {name: cycle([files[i] for i in perm]) for name, files in fsorted.items()}
+            self.data = {name: cycle_if([files[i] for i in perm]) for name, files in fsorted.items()}
         else:
-            self.data = {name: cycle(map_param(path)) for name, path in self.file_path.items()}
+            self.data = {name: cycle_if(map_param(path)) for name, path in self.file_path.items()}
             
     def __len__(self):
         return -1
