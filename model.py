@@ -38,8 +38,9 @@ class CallbackHook(tf.train.SessionRunHook):
 
 
 class TqdmHook(tf.train.SessionRunHook):
-    def __init__(self, bar):
+    def __init__(self, bar, estimator):
         self._bar = bar
+        self._estimator = estimator
         self._last_step = 0
 
     def begin(self):
@@ -51,13 +52,16 @@ class TqdmHook(tf.train.SessionRunHook):
         pass
 
     def before_run(self, run_context):  # pylint: disable=unused-argument
-        return tf.train.SessionRunArgs(self._global_step_tensor)
+        loss = [x for x in tf.get_collection(tf.GraphKeys.SUMMARIES) if x.op.name == 'loss']
+        return tf.train.SessionRunArgs(loss + [self._global_step_tensor])
         # return tf.train.SessionRunArgs([
         #     self._global_step_tensor,
         #     loss # HOW TO GET LOSS??
         # ])
 
     def after_run(self, run_context, run_values):
+        print(run_values)
+        print(run_values.results)
         global_step = run_values.results + 1
         update = global_step - self._last_step
         self._last_step = global_step
@@ -68,7 +72,7 @@ class TqdmHook(tf.train.SessionRunHook):
 class Model(object):
     current = None
     
-    def __init__(self, config, parser_fn, model_fn, generator, batch_size, 
+    def __init__(self, parser_fn, model_fn, generator, batch_size, 
                 pre_shuffle=False, post_shuffle=True, flatten=False, config=None):
         self.__config = config
         self.__parser_fn = parser_fn
@@ -160,11 +164,11 @@ class Model(object):
 
         self.__epoch_bar = bar(range(epochs // epochs_per_eval))
         self.__step_bar = bar()
-        self.__callbacks += [TqdmHook(self.__step_bar)]
+        self.__callbacks += [TqdmHook(self.__step_bar, classifier)]
         for self.__epoch in self.__epoch_bar:
             logger = tf.train.LoggingTensorHook(
                 tensors={
-                    'global_step': 'global_step/step'
+                    'global_step/step': 'global_step'
                 },
                 every_n_iter=10
             )
