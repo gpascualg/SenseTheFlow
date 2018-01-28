@@ -110,7 +110,6 @@ class RocksNumpy(RocksWildcard):
                 break
 
         itr.close()
-        raise Exception("Iterator closed")
 
     def close(self):
         self.db.close()
@@ -148,7 +147,6 @@ class RocksBytes(RocksWildcard):
                 break
 
         itr.close()
-        raise Exception("Iterator closed")
     
     def close(self):
         self.db.close()

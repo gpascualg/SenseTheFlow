@@ -82,13 +82,20 @@ class CustomSummarySaverHook(tf.train.SummarySaverHook):
 
     def _get_summary_op(self):
         tensors = [x for x in tf.get_collection(tf.GraphKeys.SUMMARIES) if x.op.name in self._summary_op]
+
+        if len(tensors) != len(self._summary_op):
+            tf.logging.error('Some tensors where not found')
+            tnames = [x.op.name for x in tensors]
+            tf.logging.error(set(self._summary_op) - set(tnames))
+
         return tensors
 
 class Model(object):
     current = None
     
     def __init__(self, parser_fn, model_fn, model_dir, batch_size, 
-                pre_shuffle=False, post_shuffle=True, flatten=False, config=None, test_amount=5):
+                pre_shuffle=False, post_shuffle=True, flatten=False, config=None, 
+                test_amount=5, params={}):
         self.__config = config
         self.__parser_fn = parser_fn
         
@@ -119,7 +126,7 @@ class Model(object):
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
-            params={})
+            params=params)
 
     def from_generator(self, generator, output_types, output_shapes=None):
         self.__data_generator = {
