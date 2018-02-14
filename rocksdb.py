@@ -10,29 +10,18 @@ import traceback
 
 
 class RocksStore(object):
-    def __init__(self, name, delete=False):
-        if delete:
-            try:
-                shutil.rmtree(name)
-            except:
-                pass
-
-        # Base folder (try to create it)
-        try:
-            os.mkdir(name)
-        except:
-            pass
-
+    def __init__(self):
         self.dbs = []
 
     def add(self, db):
         self.dbs.append(db)
 
     def iterate(self, shape, cyclic=True):
+        itrs = [db.iterate(shape, cyclic=cyclic) for db in self.dbs]
+
         while True:
-            itrs = [db.iterate() for db in self.dbs]
-            yield [next(itr) for itr in itrs]
-    
+            yield tuple([next(itr) for itr in itrs])
+
     def close(self):
         for db in self.dbs:
             db.close()
@@ -121,7 +110,6 @@ class RocksNumpy(RocksWildcard):
                 break
 
         itr.close()
-        raise Exception("Iterator closed")
 
     def close(self):
         self.db.close()
@@ -159,7 +147,6 @@ class RocksBytes(RocksWildcard):
                 break
 
         itr.close()
-        raise Exception("Iterator closed")
     
     def close(self):
         self.db.close()
@@ -354,3 +341,4 @@ class RocksDLL(object):
             dll.rocksdb_iter_destroy.argtypes = [ctypes.c_void_p]
             
         return RocksDLL.rocksdll
+
