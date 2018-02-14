@@ -5,6 +5,7 @@
 !_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
 !_TAG_PROGRAM_VERSION	5.9~svn20110310	//
 BatchNormalization	../layers.py	/^class BatchNormalization(Layer):$/;"	kind:class	line:177
+CallbackHook	../model.py	/^class CallbackHook(tf.train.SessionRunHook):$/;"	kind:class	line:15
 Convolution	../layers.py	/^class Convolution(Layer):$/;"	kind:class	line:47
 Cosine	../layers.py	/^class Cosine(Dense):$/;"	kind:class	line:113
 CustomLoader	../dataset.py	/^class CustomLoader(DataLoader):$/;"	kind:class	line:436
@@ -18,19 +19,20 @@ LRN	../layers.py	/^class LRN(Layer):$/;"	kind:class	line:149
 Layer	../layers.py	/^class Layer(object):$/;"	kind:class	line:12
 LmdbLoader	../dataset.py	/^    class LmdbLoader(DataLoader):$/;"	kind:class	line:267
 MaxPool	../layers.py	/^class MaxPool(Layer):$/;"	kind:class	line:134
-Model	../model.py	/^class Model(object):$/;"	kind:class	line:13
+Model	../model.py	/^class Model(object):$/;"	kind:class	line:72
 NumpyLoader	../dataset.py	/^class NumpyLoader(DataLoader):$/;"	kind:class	line:238
-RocksBytes	../rocksdb.py	/^class RocksBytes(RocksWildcard):$/;"	kind:class	line:130
-RocksDB	../rocksdb.py	/^class RocksDB(object):    $/;"	kind:class	line:211
-RocksDLL	../rocksdb.py	/^class RocksDLL(object):$/;"	kind:class	line:288
-RocksIterator	../rocksdb.py	/^class RocksIterator(object):$/;"	kind:class	line:179
+RocksBytes	../rocksdb.py	/^class RocksBytes(RocksWildcard):$/;"	kind:class	line:119
+RocksDB	../rocksdb.py	/^class RocksDB(object):    $/;"	kind:class	line:200
+RocksDLL	../rocksdb.py	/^class RocksDLL(object):$/;"	kind:class	line:277
+RocksIterator	../rocksdb.py	/^class RocksIterator(object):$/;"	kind:class	line:168
 RocksLoader	../dataset.py	/^    class RocksLoader(DataLoader):$/;"	kind:class	line:350
 RocksLoader_2	../dataset.py	/^    class RocksLoader_2(DataLoader):$/;"	kind:class	line:386
-RocksNumpy	../rocksdb.py	/^class RocksNumpy(RocksWildcard):$/;"	kind:class	line:89
+RocksNumpy	../rocksdb.py	/^class RocksNumpy(RocksWildcard):$/;"	kind:class	line:78
 RocksStore	../rocksdb.py	/^class RocksStore(object):$/;"	kind:class	line:12
-RocksString	../rocksdb.py	/^class RocksString(RocksBytes):$/;"	kind:class	line:167
-RocksWildcard	../rocksdb.py	/^class RocksWildcard(object):$/;"	kind:class	line:41
+RocksString	../rocksdb.py	/^class RocksString(RocksBytes):$/;"	kind:class	line:156
+RocksWildcard	../rocksdb.py	/^class RocksWildcard(object):$/;"	kind:class	line:30
 TextLoader	../dataset.py	/^class TextLoader(DataLoader):$/;"	kind:class	line:171
+TqdmHook	../model.py	/^class TqdmHook(tf.train.SessionRunHook):$/;"	kind:class	line:40
 __call__	../layers.py	/^    def __call__(self, input):        $/;"	kind:member	line:58
 __call__	../layers.py	/^    def __call__(self, input):$/;"	kind:member	line:102
 __call__	../layers.py	/^    def __call__(self, input):$/;"	kind:member	line:120
@@ -39,8 +41,8 @@ __call__	../layers.py	/^    def __call__(self, input):$/;"	kind:member	line:159
 __call__	../layers.py	/^    def __call__(self, input):$/;"	kind:member	line:172
 __call__	../layers.py	/^    def __call__(self, input):$/;"	kind:member	line:186
 __call__	../layers.py	/^    def __call__(self, layer):$/;"	kind:member	line:22
-__enter__	../model.py	/^    def __enter__(self):$/;"	kind:member	line:62
-__exit__	../model.py	/^    def __exit__(self, type, value, tb):$/;"	kind:member	line:66
+__enter__	../model.py	/^    def __enter__(self):$/;"	kind:member	line:145
+__exit__	../model.py	/^    def __exit__(self, type, value, tb):$/;"	kind:member	line:149
 __init__	../dataset.py	/^        def __init__(self, **kwargs):$/;"	kind:member	line:268
 __init__	../dataset.py	/^        def __init__(self, **kwargs):$/;"	kind:member	line:351
 __init__	../dataset.py	/^        def __init__(self, **kwargs):$/;"	kind:member	line:387
@@ -57,14 +59,16 @@ __init__	../layers.py	/^    def __init__(self, name, output_size, activation=tf.
 __init__	../layers.py	/^    def __init__(self, name, radius, alpha, beta, bias=1.0):$/;"	kind:member	line:150
 __init__	../layers.py	/^    def __init__(self, name, shape, output_size, stride, padding='SAME', groups=1, activation=tf.nn.relu):$/;"	kind:member	line:48
 __init__	../layers.py	/^    def __init__(self, name, shape, stride, padding='SAME'):$/;"	kind:member	line:135
-__init__	../model.py	/^    def __init__(self, config=None):$/;"	kind:member	line:16
-__init__	../rocksdb.py	/^    def __init__(self, itr):$/;"	kind:member	line:180
-__init__	../rocksdb.py	/^    def __init__(self, name, delete=False):$/;"	kind:member	line:13
-__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size):$/;"	kind:member	line:212
-__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:131
-__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:168
-__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:42
-__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:90
+__init__	../model.py	/^    def __init__(self, bar, estimator):$/;"	kind:member	line:41
+__init__	../model.py	/^    def __init__(self, num_steps, callback, model):$/;"	kind:member	line:18
+__init__	../model.py	/^    def __init__(self, parser_fn, model_fn, generator, batch_size, $/;"	kind:member	line:75
+__init__	../rocksdb.py	/^    def __init__(self):$/;"	kind:member	line:13
+__init__	../rocksdb.py	/^    def __init__(self, itr):$/;"	kind:member	line:169
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size):$/;"	kind:member	line:201
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:120
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:157
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:31
+__init__	../rocksdb.py	/^    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):$/;"	kind:member	line:79
 __init__.py	../__init__.py	1;"	kind:file	line:1
 __len__	../dataset.py	/^        def __len__(self):$/;"	kind:member	line:340
 __len__	../dataset.py	/^        def __len__(self):$/;"	kind:member	line:383
@@ -72,48 +76,57 @@ __len__	../dataset.py	/^        def __len__(self):$/;"	kind:member	line:428
 __len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:233
 __len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:252
 __len__	../dataset.py	/^    def __len__(self):$/;"	kind:member	line:487
-__next__	../rocksdb.py	/^    def __next__(self):$/;"	kind:member	line:190
+__next__	../rocksdb.py	/^    def __next__(self):$/;"	kind:member	line:179
 _inner	../layers.py	/^        def _inner(input, shape):$/;"	kind:function	line:187
-add	../rocksdb.py	/^    def add(self, db):$/;"	kind:member	line:28
-add_callback	../model.py	/^    def add_callback(self, steps, func):$/;"	kind:member	line:26
+add	../rocksdb.py	/^    def add(self, db):$/;"	kind:member	line:16
+add_callback	../model.py	/^    def add_callback(self, steps, func):$/;"	kind:member	line:97
+after_create_session	../model.py	/^    def after_create_session(self, session, coord):$/;"	kind:member	line:28
+after_create_session	../model.py	/^    def after_create_session(self, session, coord):$/;"	kind:member	line:51
+after_run	../model.py	/^    def after_run(self, run_context, run_values):$/;"	kind:member	line:34
+after_run	../model.py	/^    def after_run(self, run_context, run_values):$/;"	kind:member	line:62
 bar	../config.py	/^bar = tqdm.tqdm$/;"	kind:variable	line:3
-bar	../model.py	/^    def bar(self):$/;"	kind:member	line:58
+bar	../model.py	/^    def bar(self):$/;"	kind:member	line:141
 batch_prefetcher	../dataset.py	/^    def batch_prefetcher(x, self):$/;"	kind:member	line:82
 batch_size	../dataset.py	/^    def batch_size(self):$/;"	kind:member	line:533
+before_run	../model.py	/^    def before_run(self, run_context):  # pylint: disable=unused-argument$/;"	kind:member	line:31
+before_run	../model.py	/^    def before_run(self, run_context):  # pylint: disable=unused-argument$/;"	kind:member	line:54
+begin	../model.py	/^    def begin(self):$/;"	kind:member	line:23
+begin	../model.py	/^    def begin(self):$/;"	kind:member	line:46
 caffe_root	../dataset.py	/^    caffe_root = '\/home\/deep\/caffe'$/;"	kind:variable	line:260
-check_error	../rocksdb.py	/^    def check_error(self):$/;"	kind:member	line:254
+check_error	../rocksdb.py	/^    def check_error(self):$/;"	kind:member	line:243
 close	../dataset.py	/^        def close(self):$/;"	kind:member	line:324
 close	../dataset.py	/^        def close(self):$/;"	kind:member	line:418
 close	../dataset.py	/^    def close(self):$/;"	kind:member	line:163
 close	../dataset.py	/^    def close(self):$/;"	kind:member	line:550
-close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:126
-close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:164
-close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:207
-close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:284
-close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:36
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:115
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:153
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:196
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:25
+close	../rocksdb.py	/^    def close(self):$/;"	kind:member	line:273
 config.py	../config.py	1;"	kind:file	line:1
-current	../model.py	/^    current = None$/;"	kind:variable	line:14
+current	../model.py	/^    current = None$/;"	kind:variable	line:73
 cycle_if	../dataset.py	/^        def cycle_if(p):$/;"	kind:function	line:471
 dataset.py	../dataset.py	1;"	kind:file	line:1
-feed_dict	../model.py	/^    def feed_dict(self):$/;"	kind:member	line:46
-first	../rocksdb.py	/^    def first(self):$/;"	kind:member	line:184
+epoch	../model.py	/^    def epoch(self):$/;"	kind:member	line:138
+first	../rocksdb.py	/^    def first(self):$/;"	kind:member	line:173
 gen_batch	../dataset.py	/^        def gen_batch(self):$/;"	kind:member	line:310
 gen_batch	../dataset.py	/^        def gen_batch(self):$/;"	kind:member	line:372
 gen_batch	../dataset.py	/^        def gen_batch(self):$/;"	kind:member	line:409
 gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:212
 gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:245
 gen_batch	../dataset.py	/^    def gen_batch(self):$/;"	kind:member	line:453
-get	../rocksdb.py	/^    def get():$/;"	kind:member	line:292
-get_key	../rocksdb.py	/^    def get_key(self):$/;"	kind:member	line:83
+get	../rocksdb.py	/^    def get():$/;"	kind:member	line:281
+get_key	../rocksdb.py	/^    def get_key(self):$/;"	kind:member	line:72
 get_one	../dataset.py	/^        def get_one(self):$/;"	kind:member	line:291
 get_one	../dataset.py	/^        def get_one(self):$/;"	kind:member	line:402
-iterate	../rocksdb.py	/^    def iterate(self, _=None, cyclic=True):$/;"	kind:member	line:145
-iterate	../rocksdb.py	/^    def iterate(self, _=None, cyclic=True):$/;"	kind:member	line:174
-iterate	../rocksdb.py	/^    def iterate(self, shape, cyclic=True):$/;"	kind:member	line:105
-iterate	../rocksdb.py	/^    def iterate(self, shape, cyclic=True):$/;"	kind:member	line:31
-iterator	../rocksdb.py	/^    def iterator(self):$/;"	kind:member	line:279
-key	../rocksdb.py	/^    def key(self):$/;"	kind:member	line:199
-last	../rocksdb.py	/^    def last(self):$/;"	kind:member	line:187
+input_fn	../model.py	/^    def input_fn(self, is_training, shuffle_buffer=64, num_parallel_calls=5, num_epochs=1):$/;"	kind:member	line:103
+iterate	../rocksdb.py	/^    def iterate(self, _=None, cyclic=True):$/;"	kind:member	line:134
+iterate	../rocksdb.py	/^    def iterate(self, _=None, cyclic=True):$/;"	kind:member	line:163
+iterate	../rocksdb.py	/^    def iterate(self, shape, cyclic=True):$/;"	kind:member	line:19
+iterate	../rocksdb.py	/^    def iterate(self, shape, cyclic=True):$/;"	kind:member	line:94
+iterator	../rocksdb.py	/^    def iterator(self):$/;"	kind:member	line:268
+key	../rocksdb.py	/^    def key(self):$/;"	kind:member	line:188
+last	../rocksdb.py	/^    def last(self):$/;"	kind:member	line:176
 layers.py	../layers.py	1;"	kind:file	line:1
 load_labels	../dataset.py	/^        def load_labels(self, **kwargs):$/;"	kind:member	line:281
 load_test	../dataset.py	/^    def load_test(self, dtype=TextLoader, **kwargs):$/;"	kind:member	line:547
@@ -122,13 +135,13 @@ make_var	../layers.py	/^    def make_var(self, name, shape, initializer=None):$/
 map_param	../dataset.py	/^        def map_param(p):$/;"	kind:function	line:466
 merge_two_dicts	../dataset.py	/^def merge_two_dicts(x, y):$/;"	kind:function	line:492
 model.py	../model.py	1;"	kind:file	line:1
-next	../rocksdb.py	/^    def next(self):$/;"	kind:member	line:193
+next	../rocksdb.py	/^    def next(self):$/;"	kind:member	line:182
 next_batch	../dataset.py	/^    def next_batch(self):$/;"	kind:member	line:97
 process_image	../dataset.py	/^    def process_image(self, img):$/;"	kind:member	line:117
-put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:139
-put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:171
-put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:97
-read	../rocksdb.py	/^    def read(self, key, key_len=0):$/;"	kind:member	line:269
+put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:128
+put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:160
+put	../rocksdb.py	/^    def put(self, data):$/;"	kind:member	line:86
+read	../rocksdb.py	/^    def read(self, key, key_len=0):$/;"	kind:member	line:258
 read_image	../dataset.py	/^        def read_image(self, path):$/;"	kind:member	line:286
 reset	../dataset.py	/^        def reset(self):$/;"	kind:member	line:334
 reset	../dataset.py	/^        def reset(self):$/;"	kind:member	line:380
@@ -138,19 +151,14 @@ reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:230
 reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:249
 reset	../dataset.py	/^    def reset(self):$/;"	kind:member	line:465
 resize	../dataset.py	/^    def resize(image, size):$/;"	kind:function	line:19
-results	../model.py	/^    def results(self):$/;"	kind:member	line:55
 rocksdb.py	../rocksdb.py	1;"	kind:file	line:1
-rocksdll	../rocksdb.py	/^    rocksdll = None$/;"	kind:variable	line:289
-session	../model.py	/^    def session(self):$/;"	kind:member	line:52
-set_feed_dict	../model.py	/^    def set_feed_dict(self, func):$/;"	kind:member	line:32
-set_init	../model.py	/^    def set_init(self, func):$/;"	kind:member	line:38
+rocksdll	../rocksdb.py	/^    rocksdll = None$/;"	kind:variable	line:278
 shuffle	../dataset.py	/^    def shuffle(self, a, b):$/;"	kind:member	line:108
 start_prefetch	../dataset.py	/^    def start_prefetch(self):$/;"	kind:member	line:49
-step	../model.py	/^    def step(self):$/;"	kind:member	line:49
-train	../model.py	/^    def train(self, train_op, steps):$/;"	kind:member	line:71
+train	../model.py	/^    def train(self, model_dir, epochs, epochs_per_eval):$/;"	kind:member	line:153
 update_test	../layers.py	/^            def update_test():$/;"	kind:function	line:205
 update_training	../layers.py	/^            def update_training():$/;"	kind:function	line:194
-valid	../rocksdb.py	/^    def valid(self):$/;"	kind:member	line:196
-value	../rocksdb.py	/^    def value(self):$/;"	kind:member	line:203
+valid	../rocksdb.py	/^    def valid(self):$/;"	kind:member	line:185
+value	../rocksdb.py	/^    def value(self):$/;"	kind:member	line:192
 wait_prefetch	../dataset.py	/^    def wait_prefetch(self):$/;"	kind:member	line:58
-write	../rocksdb.py	/^    def write(self, key, value, key_len=0, value_len=0):$/;"	kind:member	line:259
+write	../rocksdb.py	/^    def write(self, key, value, key_len=0, value_len=0):$/;"	kind:member	line:248
