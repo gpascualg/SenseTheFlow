@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--dir', default='.')
     parser.add_argument('--tensorflow', action='store_true')
     parser.add_argument('--tensorflow-version', default='r1.0')
+    parser.add_argument('--bazel-version', default='0.8.0')
     parser.add_argument('--caffe', action='store_true')
     parser.add_argument('--gpu', action='store_true')
     parser.add_argument('--opencl', action='store_true')
@@ -34,6 +35,7 @@ def main():
         'python_version27': int(args.python_version) == 2,
         'build_tensorflow': int(args.tensorflow),
         'tensorflow_version': args.tensorflow_version,
+        'bazel_version': args.bazel_version,
         'build_caffe': int(args.caffe),
         'base': 'nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04' if args.gpu else 'ubuntu:16.04',
         'use_cuda': 1 if args.gpu else 0,

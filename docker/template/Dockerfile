@@ -7,17 +7,21 @@ MAINTAINER Guillem Pascual <gpascualg93@gmail.com>
 RUN apt-get update && \
 	apt-get install -y curl bzip2 software-properties-common zip g++ unzip cmake vim \
 		libxrender1 libfontconfig1 git \
-		swig pkg-config openjdk-8-jdk-headless autoconf locate build-essential
+		swig pkg-config openjdk-8-jdk-headless autoconf locate build-essential \
+                cuda-command-line-tools-9-0 cuda-cublas-dev-9-0 cuda-cudart-dev-9-0 \
+		cuda-cufft-dev-9-0 cuda-curand-dev-9-0 cuda-cusolver-dev-9-0 \
+		cuda-cusparse-dev-9-0 libcudnn7=7.0.5.15-1+cuda9.0 libcudnn7-dev=7.0.5.15-1+cuda9.0 \
+		libpng12-dev libfreetype6-dev libzmq3-dev zlib1g-dev
 
 # Get anaconda #
 ################
-RUN curl -OL https://repo.continuum.io/archive/Anaconda3-4.4.0-Linux-x86_64.sh && \
-	bash Anaconda3-4.4.0-Linux-x86_64.sh -b -p /opt/anaconda && \
-	rm Anaconda3-4.4.0-Linux-x86_64.sh
+RUN curl -OL https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh && \
+	bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p /opt/anaconda && \
+	rm Anaconda3-5.0.1-Linux-x86_64.sh
 
 ## Export path
 ENV PATH=/opt/anaconda/bin:/root/bin:/usr/local/bin:$PATH \
-	LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+	LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64/stubs:$LD_LIBRARY_PATH
 
 ## Configure anaconda
 EXPOSE 8888
@@ -36,18 +40,19 @@ VOLUME ["/data"]
 
 # Get Bazel #
 #############
-# 0.4.5 was working
-RUN curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.5.4/bazel-0.5.4-installer-linux-x86_64.sh && \
-	chmod +x bazel-0.5.4-installer-linux-x86_64.sh && \
-	./bazel-0.5.4-installer-linux-x86_64.sh --user && \
-	rm ./bazel-0.5.4-installer-linux-x86_64.sh
+# 0.5.4 was working
+RUN echo "startup --batch" >>/etc/bazel.bazelrc && \
+        echo "build --spawn_strategy=standalone --genrule_strategy=standalone" >>/etc/bazel.bazelrc && \
+	curl -O -L https://github.com/bazelbuild/bazel/releases/download/0.8.0/bazel-0.8.0-installer-linux-x86_64.sh && \
+	chmod +x bazel-0.8.0-installer-linux-x86_64.sh && \
+	./bazel-0.8.0-installer-linux-x86_64.sh && \
+	rm ./bazel-0.8.0-installer-linux-x86_64.sh
 
 
 # Get tensorflow #
 ##################
-RUN git clone https://github.com/tensorflow/tensorflow
+RUN git clone --branch=r1.5 --depth=1 https://github.com/tensorflow/tensorflow
 WORKDIR tensorflow
-RUN git checkout v1.4.0
 
 ## Hack to make tensorflow build process use non-standard python location
 RUN sed -i \
@@ -71,16 +76,13 @@ ENV PYTHON_BIN_PATH=/opt/anaconda/bin/python \
 	TF_CUDA_VERSION=9.0 \
 	TF_CUDNN_VERSION=7 \
         CUDNN_INSTALL_PATH=/usr/lib/x86_64-linux-gnu \
-	TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2
+	TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.1
 
 RUN chmod +x configure && \
 	sed -i -e '3,4d' configure && \
-	sed -i '/^\s*sha256 = /d' tensorflow/workspace.bzl && \
 	./configure
 
-## Build and install
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
-	LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
 	bazel build -s  --config=opt --config=cuda --verbose_failures --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --jobs=$(grep -c '^processor' /proc/cpuinfo) //tensorflow/tools/pip_package:build_pip_package
 
 RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg && \
@@ -115,7 +117,7 @@ ENV PYTHONPATH=/notebooks:/opt/python-libs
 
 
 # Configure jupyter at startup
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 RUN echo "#!/bin/bash\n\
 echo 'Generating config'\n\
 jupyter-notebook --allow-root --generate-config --config=/etc/jupyter-notebook.py\n\

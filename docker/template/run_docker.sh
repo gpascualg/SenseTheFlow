@@ -64,7 +64,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 # Execute docker detached
-nvidia-docker run -tdi $n $p $v $e $1
+docker run --runtime=nvidia -tdi $n $p $v $e $1
 
 if [[ $? -ne 0 ]]; then
     echo "Fatal, could not start docker"
