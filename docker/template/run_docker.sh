@@ -63,6 +63,10 @@ if [[ $# -ne 1 ]]; then
     exit 4
 fi
 
+# Stop and remove if it already exists
+docker stop $name &>/dev/null
+docker rm $name &>/dev/null
+
 # Execute docker detached
 docker run --runtime=nvidia -tdi $n $p $v $e $1
 
