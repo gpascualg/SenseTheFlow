@@ -18,6 +18,7 @@ wget https://nvidia.github.io/libnvidia-container/ubuntu16.04/amd64/libnvidia-co
 wget https://nvidia.github.io/libnvidia-container/ubuntu16.04/amd64/libnvidia-container-tools_1.0.0~alpha.3-1_amd64.deb
 wget https://nvidia.github.io/nvidia-container-runtime/ubuntu16.04/amd64/nvidia-container-runtime_1.1.1+docker17.12.0-1_amd64.deb
 dpkg -i libnvidia-container1_*.deb libnvidia-container-tools_*.deb nvidia-container-runtime_*.deb
+rm libnvidia-container1_*.deb libnvidia-container-tools_*.deb nvidia-container-runtime_*.deb
 
 # Configure docker daemon
 cat > /etc/docker/daemon.json <<- EOM

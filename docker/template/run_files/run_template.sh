@@ -10,4 +10,5 @@ if [[ $? -ne 0 ]]; then
     fi
 fi
 
-$(dirname "$0")/../run_docker.sh --name <username> -s ../ssh_keys/<username>.pub -p 8888:8888 -p 6006:6006 -p 2200:22 -v /data:/data -v /notebooks:/notebooks -e JUPYTER_PASSWORD='$SHA_PASS' -e FETCH_TF_CONTRIB=1 deepstack
+RUNPATH=$(realpath $(dirname "$0")/../)
+$RUNPATH/run_docker.sh --name <username> -s ../ssh_keys/<username>.pub -p 8888:8888 -p 6006:6006 -p 2200:22 -v /data:/data -v /notebooks:/notebooks -e JUPYTER_PASSWORD='$SHA_PASS' -e FETCH_TF_CONTRIB=1 deepstack

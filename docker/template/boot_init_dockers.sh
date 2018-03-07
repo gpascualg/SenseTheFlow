@@ -11,15 +11,15 @@
 
 set -e
 
-BASEDIR=/opt/pyhon-libraries/SenseTheFlow
-SCRIPT=$BASEDIR/docker/template/run_all.sh
+BASEDIR=/opt/python-libraries/SenseTheFlow
+SCRIPTDIR=$BASEDIR/docker/template
 
 . /lib/lsb/init-functions
 
 case "$1" in
     start)
         log_daemon_msg "Starting Dockers" "deepstack-control" || true
-        $(SCRIPT)
+	${SCRIPTDIR}/run_all.sh
         ;;
 
     stop)
