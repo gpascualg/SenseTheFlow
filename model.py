@@ -95,7 +95,8 @@ class Model(object):
     
     def __init__(self, parser_fn, model_fn, model_dir, batch_size, 
                 shuffle_test=False, pre_shuffle=False, post_shuffle=False, 
-                flatten=False, config=None, test_amount=5, params={}):
+                flatten=False, config=None, test_amount=5, 
+                run_config=None, warm_start_from=None, params={}):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
@@ -124,13 +125,16 @@ class Model(object):
         self.__callbacks = []
 
         # Set up a RunConfig to only save checkpoints once per training cycle.
-        run_config = tf.estimator.RunConfig() \
-            .replace(save_checkpoints_secs=1e9) \
+        if run_config is None:
+            run_config = tf.estimator.RunConfig() \
+                .replace(save_checkpoints_secs=1e9)
+
+        run_config = run_config \
             .replace(session_config=self.__config)
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
-            params=params)
+            warm_start_from=warm_start_from, params=params)
 
     def from_generator(self, generator, output_types, output_shapes=None):
         self.__data_generator = {
