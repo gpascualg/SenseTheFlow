@@ -90,28 +90,93 @@ class CustomSummarySaverHook(tf.train.SummarySaverHook):
 
         return tensors
 
+class DataParser(object):
+    def __init__(self):
+        self.__input_fn = dict(
+            (tf.estimator.ModeKeys.TRAIN, None)
+            (tf.estimator.ModeKeys.PREDICT, None)
+            (tf.estimator.ModeKeys.EVAL, None)
+        )
+
+    def from_generator(self, generator, output_types, output_shapes=None, 
+        pre_shuffle=False, post_shuffle=False, flatten=False, 
+        num_samples=None, batch_size=1,
+        mode=tf.estimator.ModeKeys.TRAIN):
+
+        generator = {
+            'generator': generator, 
+            'output_types': output_types,
+            'output_shapes': output_shapes
+        }
+
+        self.__input_fn[mode] = lambda num_epochs: self.generator_input_fn(
+            generator, 
+            pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
+            num_samples=num_samples, batch_size=batch_size,
+            mode=mode, num_epochs=num_epochs
+        )
+        
+        return self
+
+    def train_from_generator(self, *args, **kwargs):
+        self.from_generator(*args, mode=tf.estimator.ModeKeys.TRAIN, **kwargs)
+        return self
+    
+    def eval_from_generator(self, *args, **kwargs):
+        self.from_generator(*args, mode=tf.estimator.ModeKeys.EVAL, **kwargs)
+        return self
+        
+    def predict_from_generator(self, *args, **kwargs):
+        self.from_generator(*args, mode=tf.estimator.ModeKeys.PREDICT, **kwargs)
+        return self
+
+    def generator_input_fn(self, generator, parser_fn, mode, 
+        pre_shuffle=False, post_shuffle=False, flatten=False, 
+        num_samples=None, batch_size=1, num_epochs=1):
+
+        dataset = tf.data.Dataset.from_generator(**generator)
+
+        # Pre-parsing shuffle
+        if pre_shuffle:
+            dataset = dataset.shuffle(buffer_size=pre_shuffle)
+
+        dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
+
+        if flatten:
+            dataset = dataset.flat_map(lambda x, y: tf.data.Dataset.from_tensor_slices((x, y)))
+
+        if batch_size > 0:
+            dataset = dataset.prefetch(batch_size)
+
+        # Post-parsing
+        if post_shuffle:
+            dataset = dataset.shuffle(buffer_size=post_shuffle)
+
+        if num_samples is not None:
+            dataset = dataset.take(num_samples)
+
+        dataset = dataset.repeat(num_epochs)
+        if batch_size > 0:
+            dataset = dataset.batch(batch_size)
+            
+        iterator = dataset.make_one_shot_iterator()
+        features, labels = iterator.get_next()
+        return features, labels
+
+    def input_fn(self, mode, num_epochs):
+        assert self.__input_fn[mode] is not None
+        return self.__input_fn[mode](num_epochs)
+
 class Model(object):
     current = None
     
-    def __init__(self, parser_fn, model_fn, model_dir, batch_size, 
-                shuffle_test=False, pre_shuffle=False, post_shuffle=False, 
-                flatten=False, config=None, test_amount=5, 
-                run_config=None, warm_start_from=None, params={}):
+    def __init__(self, data_parser, model_fn, model_dir, 
+        config=None, run_config=None, warm_start_from=None, params={}):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
         self.__config = config
-        self.__parser_fn = parser_fn
-        
-        self.__input_fn = None
-        self.__data_generator = None
-
-        self.__batch_size = batch_size
-        self.__shuffle_test = shuffle_test
-        self.__pre_shuffle = pre_shuffle
-        self.__post_shuffle = post_shuffle
-        self.__flatten = flatten
-        self.__test_amount = test_amount
+        self.__data_parser = data_parser
         
         self.__epoch = 0
         self.__init = None
@@ -135,57 +200,12 @@ class Model(object):
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
             warm_start_from=warm_start_from, params=params)
-
-    def from_generator(self, generator, output_types, output_shapes=None):
-        self.__data_generator = {
-               'generator': generator, 
-               'output_types': output_types,
-               'output_shapes': output_shapes
-           }
-        self.__input_fn = self.generator_input_fn
         
     def add_callback(self, steps, func):
         assert type(func) == types.FunctionType, "Expected a function in func"
         assert len(signature(func).parameters) == 2, "Expected func to have 2 parameters (model, step)"
         
         self.__callbacks.append(CallbackHook(steps, func, self))
-
-    def generator_input_fn(self, is_training, num_parallel_calls=5, num_epochs=1):
-        if 'train' in self.__data_generator:
-            if is_training:
-                data_generator = self.__data_generator['train'] 
-            else:
-                data_generator = self.__data_generator['test'] 
-        else:
-            data_generator = self.__data_generator
-
-        dataset = tf.data.Dataset.from_generator(**data_generator)
-
-        # Pre-parsing
-        if (is_training or self.__shuffle_test) and self.__pre_shuffle:
-            dataset = dataset.shuffle(buffer_size=self.__pre_shuffle)
-
-        dataset = dataset.map(lambda *args: self.__parser_fn(*args, is_training=is_training), num_parallel_calls=num_parallel_calls)
-
-        if self.__flatten:
-            dataset = dataset.flat_map(lambda x, y: tf.data.Dataset.from_tensor_slices((x, y)))
-
-        dataset = dataset.prefetch(self.__batch_size)
-
-        # Post-parsing
-        if (is_training or self.__shuffle_test) and self.__post_shuffle:
-            dataset = dataset.shuffle(buffer_size=self.__post_shuffle)
-
-        if not is_training:
-            dataset = dataset.take(self.__test_amount)
-
-        dataset = dataset.repeat(num_epochs)
-        if self.__batch_size > 0:
-            dataset = dataset.batch(self.__batch_size)
-            
-        iterator = dataset.make_one_shot_iterator()
-        features, labels = iterator.get_next()
-        return features, labels
 
     # Getters
     def epoch(self):
@@ -205,11 +225,10 @@ class Model(object):
         Model.current = None       
 
 
-    def _estimator_hook(self, func, steps, callback, tf_hooks, log, summary):
+    def _estimator_hook(self, func, mode, steps, callback, tf_hooks, log, summary):
         def hook(hooks, model, step):
-            results = getattr(model.classifier(), func)(
-                input_fn=lambda: self.__input_fn(False, num_parallel_calls=5, num_epochs=1),
-                #checkpoint_path=os.path.join(model.classifier().model_dir, 'model.ckpt'),
+            results = func(
+                input_fn=lambda: self.__data_parser.input_fn(mode=mode, num_epochs=epochs_per_eval),
                 hooks=hooks
             )
             callback(results)
@@ -238,10 +257,10 @@ class Model(object):
         self.add_callback(steps, lambda model, step: hook(tf_hooks, model, step))
 
     def eval_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook('evaluate', steps, callback, tf_hooks, log, summary)
+        self._estimator_hook(mode.classifier().evaluate, tf.estimator.ModeKeys.EVAL, steps, callback, tf_hooks, log, summary)
 
     def predict_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook('predict', steps, callback, tf_hooks, log, summary)
+        self._estimator_hook(mode.classifier().predict, tf.estimator.ModeKeys.PREDICT, steps, callback, tf_hooks, log, summary)
     
     def train(self, epochs, epochs_per_eval):
         self.__epoch_bar = bar(total=epochs)
@@ -258,18 +277,16 @@ class Model(object):
             step_counter = tf.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
 
             self.classifier().train(
-                input_fn=lambda: self.__input_fn(True, num_parallel_calls=5, num_epochs=epochs_per_eval),
+                input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=epochs_per_eval),
                 hooks=self.__callbacks + [logger, step_counter]
             )
 
             self.__epoch_bar.update(epochs_per_eval)
 
-
     def predict(self, epochs):
         self.__step_bar = bar()
 
         return self.classifier().predict(
-            input_fn=lambda: self.__input_fn(False, num_parallel_calls=5, num_epochs=epochs),
+            input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
             hooks=[TqdmHook(self.__step_bar)]
         )
-
