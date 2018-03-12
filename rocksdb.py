@@ -13,11 +13,11 @@ class RocksStore(object):
     def __init__(self):
         self.dbs = []
 
-    def add(self, db):
-        self.dbs.append(db)
+    def add(self, db, shape=None):
+        self.dbs.append((db, shape))
 
-    def iterate(self, shape, cyclic=True):
-        itrs = [db.iterate(shape, cyclic=cyclic) for db in self.dbs]
+    def iterate(self, cyclic=True):
+        itrs = [db.iterate(shape, cyclic=cyclic) for db, shape in self.dbs]
 
         while True:
             yield tuple([next(itr) for itr in itrs])
