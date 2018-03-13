@@ -226,26 +226,10 @@ class Model(object):
     def data(self, data_parser):
         self.__data_parser = data_parser
 
-    def _estimator_hook(self, func, steps, callback, tf_hooks, log, summary):
+    def _estimator_hook(self, func, steps, callback):
         def hook(hooks, model, step):
-            results = func(epochs=1, leave_bar=False)
+            results = func(epochs=1, log=log, summary=summary, leave_bar=False)
             callback(results)
-
-        if log:
-            tf_hooks = tf_hooks or []
-            tf_hooks.append(tf.train.LoggingTensorHook(
-                tensors=log,
-                every_n_iter=1
-            ))
-
-        if summary:
-            tf_hooks = tf_hooks or []
-
-            tf_hooks.append(CustomSummarySaverHook(
-                summary_op=summary,
-                save_steps=1,
-                output_dir=os.path.join(self.classifier().model_dir, func[:4])
-            ))
 
         self.__callbacks.append(tf.train.CheckpointSaverHook(
             checkpoint_dir=self.classifier().model_dir,
@@ -260,7 +244,7 @@ class Model(object):
     def predict_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
         self._estimator_hook(self.predict, steps, callback, tf_hooks, log, summary)
     
-    def train(self, epochs, epochs_per_eval, eval_callback=None):
+    def train(self, epochs, epochs_per_eval, eval_callback=None, eval_log=None, eval_summary=None):
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
         self.__callbacks += [TqdmHook(self.__step_bar)]
@@ -284,23 +268,51 @@ class Model(object):
             # Try to do an eval
             if eval_callback is not None:
                 try:
-                    results = self.evaluate(epochs=1, leave_bar=False)
+                    results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
                     eval_callback(results)
                 except:
                     print('You have no `evaluation` dataset')
 
-    def predict(self, epochs):
-        self.__step_bar = bar()
+    def predict(self, epochs, log=None, summary=None, leave_bar=True):
+        self.__step_bar = bar(leave=leave_bar)
+        tf_hooks = [TqdmHook(self.__step_bar)]
+
+        if log is not None:
+            tf_hooks.append(tf.train.LoggingTensorHook(
+                tensors=log,
+                every_n_iter=1
+            ))
+
+        if summary is not None:
+            tf_hooks.append(CustomSummarySaverHook(
+                summary_op=summary,
+                save_steps=1,
+                output_dir=os.path.join(self.classifier().model_dir, 'pred')
+            ))
 
         return self.classifier().predict(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
-            hooks=[TqdmHook(self.__step_bar)]
+            hooks=tf_hooks
         )
 
-    def evaluate(self, epochs, leave_bar=True):
+    def evaluate(self, epochs, log=None, summary=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
+        tf_hooks = [TqdmHook(self.__step_bar)]
+
+        if log is not None:
+            tf_hooks.append(tf.train.LoggingTensorHook(
+                tensors=log,
+                every_n_iter=1
+            ))
+
+        if summary is not None:
+            tf_hooks.append(CustomSummarySaverHook(
+                summary_op=summary,
+                save_steps=1,
+                output_dir=os.path.join(self.classifier().model_dir, 'eval')
+            ))
 
         return self.classifier().evaluate(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs),
-            hooks=[TqdmHook(self.__step_bar)]
+            hooks=tf_hooks
         )
