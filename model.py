@@ -98,7 +98,7 @@ class DataParser(object):
             (tf.estimator.ModeKeys.EVAL, None)
         )
 
-    def from_generator(self, generator, output_types, output_shapes=None, 
+    def from_generator(self, parser_fn, generator, output_types, output_shapes=None, 
         pre_shuffle=False, post_shuffle=False, flatten=False, 
         num_samples=None, batch_size=1,
         mode=tf.estimator.ModeKeys.TRAIN):
@@ -110,7 +110,7 @@ class DataParser(object):
         }
 
         self.__input_fn[mode] = lambda num_epochs: self.generator_input_fn(
-            generator, 
+            generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
             num_samples=num_samples, batch_size=batch_size,
             mode=mode, num_epochs=num_epochs
