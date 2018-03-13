@@ -283,11 +283,11 @@ class Model(object):
 
             # Try to do an eval
             if eval_callback is not None:
-                #try:
-                results = self.evaluate(epochs=1, leave_bar=False)
-                eval_callback(results)
-                #except:
-                print('You have no `evaluation` dataset')
+                try:
+                    results = self.evaluate(epochs=1, leave_bar=False)
+                    eval_callback(results)
+                except:
+                    print('You have no `evaluation` dataset')
 
     def predict(self, epochs):
         self.__step_bar = bar()
