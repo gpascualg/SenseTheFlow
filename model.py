@@ -92,13 +92,13 @@ class CustomSummarySaverHook(tf.train.SummarySaverHook):
 
 class DataParser(object):
     def __init__(self):
-        self.__input_fn = dict(
-            (tf.estimator.ModeKeys.TRAIN, None)
-            (tf.estimator.ModeKeys.PREDICT, None)
+        self.__input_fn = dict([
+            (tf.estimator.ModeKeys.TRAIN, None),
+            (tf.estimator.ModeKeys.PREDICT, None),
             (tf.estimator.ModeKeys.EVAL, None)
-        )
+        ])
 
-    def from_generator(self, generator, output_types, output_shapes=None, 
+    def from_generator(self, parser_fn, generator, output_types, output_shapes=None, 
         pre_shuffle=False, post_shuffle=False, flatten=False, 
         num_samples=None, batch_size=1,
         mode=tf.estimator.ModeKeys.TRAIN):
@@ -110,7 +110,7 @@ class DataParser(object):
         }
 
         self.__input_fn[mode] = lambda num_epochs: self.generator_input_fn(
-            generator, 
+            generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
             num_samples=num_samples, batch_size=batch_size,
             mode=mode, num_epochs=num_epochs
@@ -283,11 +283,11 @@ class Model(object):
 
             # Try to do an eval
             if eval_callback is not None:
-                try:
-                    results = self.eval(epochs=1, leave_bar=False)
-                    eval_callback(results)
-                except:
-                    print('You have no `evaluation` dataset')
+                #try:
+                results = self.evaluate(epochs=1, leave_bar=False)
+                eval_callback(results)
+                #except:
+                print('You have no `evaluation` dataset')
 
     def predict(self, epochs):
         self.__step_bar = bar()
