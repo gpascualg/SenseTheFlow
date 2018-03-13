@@ -170,14 +170,12 @@ class DataParser(object):
 class Model(object):
     current = None
     
-    def __init__(self, data_parser, model_fn, model_dir, 
+    def __init__(self, model_fn, model_dir, 
         config=None, run_config=None, warm_start_from=None, params={}):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
-        self.__config = config
-        self.__data_parser = data_parser
-        
+        self.__config = config        
         self.__epoch = 0
         self.__init = None
         self.__feed_dict = None
@@ -185,6 +183,7 @@ class Model(object):
         self.__results = None
         self.__epoch_bar = None
         self.__step_bar = None
+        self.__data_parser = None
         
         self.__classifier = None
         self.__callbacks = []
@@ -224,13 +223,12 @@ class Model(object):
     def __exit__(self, type, value, tb):
         Model.current = None       
 
+    def data(self, data_parser):
+        self.__data_parser = data_parser
 
-    def _estimator_hook(self, func, mode, steps, callback, tf_hooks, log, summary):
+    def _estimator_hook(self, func, steps, callback, tf_hooks, log, summary):
         def hook(hooks, model, step):
-            results = func(
-                input_fn=lambda: self.__data_parser.input_fn(mode=mode, num_epochs=epochs_per_eval),
-                hooks=hooks
-            )
+            results = func(epochs=1, leave_bar=False)
             callback(results)
 
         if log:
@@ -257,12 +255,12 @@ class Model(object):
         self.add_callback(steps, lambda model, step: hook(tf_hooks, model, step))
 
     def eval_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook(mode.classifier().evaluate, tf.estimator.ModeKeys.EVAL, steps, callback, tf_hooks, log, summary)
+        self._estimator_hook(self.evaluate, steps, callback, tf_hooks, log, summary)
 
     def predict_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook(mode.classifier().predict, tf.estimator.ModeKeys.PREDICT, steps, callback, tf_hooks, log, summary)
+        self._estimator_hook(self.predict, steps, callback, tf_hooks, log, summary)
     
-    def train(self, epochs, epochs_per_eval):
+    def train(self, epochs, epochs_per_eval, eval_callback=None):
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
         self.__callbacks += [TqdmHook(self.__step_bar)]
@@ -283,10 +281,26 @@ class Model(object):
 
             self.__epoch_bar.update(epochs_per_eval)
 
+            # Try to do an eval
+            if eval_callback is not None:
+                try:
+                    results = self.eval(epochs=1, leave_bar=False)
+                    eval_callback(results)
+                except:
+                    print('You have no `evaluation` dataset')
+
     def predict(self, epochs):
         self.__step_bar = bar()
 
         return self.classifier().predict(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
+            hooks=[TqdmHook(self.__step_bar)]
+        )
+
+    def evaluate(self, epochs, leave_bar=True):
+        self.__step_bar = bar(leave=leave_bar)
+
+        return self.classifier().evaluate(
+            input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs),
             hooks=[TqdmHook(self.__step_bar)]
         )
