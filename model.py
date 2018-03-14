@@ -226,8 +226,8 @@ class Model(object):
     def data(self, data_parser):
         self.__data_parser = data_parser
 
-    def _estimator_hook(self, func, steps, callback):
-        def hook(hooks, model, step):
+    def _estimator_hook(self, func, steps, callback, log=None, summary=None):
+        def hook(model, step):
             results = func(epochs=1, log=log, summary=summary, leave_bar=False)
             callback(results)
 
@@ -236,13 +236,13 @@ class Model(object):
             save_steps=steps
         ))
 
-        self.add_callback(steps, lambda model, step: hook(tf_hooks, model, step))
+        self.add_callback(steps, lambda model, step: hook(model, step))
 
-    def eval_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook(self.evaluate, steps, callback, tf_hooks, log, summary)
+    def eval_hook(self, steps, callback, log=None, summary=None):
+        self._estimator_hook(self.evaluate, steps, callback, log, summary)
 
-    def predict_hook(self, steps, callback, tf_hooks=None, log=None, summary=None):
-        self._estimator_hook(self.predict, steps, callback, tf_hooks, log, summary)
+    def predict_hook(self, steps, callback, log=None, summary=None):
+        self._estimator_hook(self.predict, steps, callback, log, summary)
     
     def train(self, epochs, epochs_per_eval, eval_callback=None, eval_log=None, eval_summary=None):
         self.__epoch_bar = bar(total=epochs)
