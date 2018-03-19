@@ -55,7 +55,7 @@ class TqdmHook(tf.train.SessionRunHook):
         return tf.train.SessionRunArgs(loss + [self._global_step_tensor])
 
     def after_run(self, run_context, run_values):
-        loss, global_step = run_values.results[0], run_values.results[-1]
+        loss, global_step = sum(run_values.results[:-1]), run_values.results[-1]
         update = global_step - self._last_step
         self._last_step = global_step
 
@@ -167,6 +167,41 @@ class DataParser(object):
         assert self.__input_fn[mode] is not None
         return self.__input_fn[mode](num_epochs)
 
+class EvalCallback(tf.train.SessionRunHook):
+    def __init__(self, aggregate_callback=None, step_callback=None, fetch_tensors=None):
+        self._aggregate_callback = aggregate_callback
+        self._step_callback = step_callback
+        self._fetch_tensors = fetch_tensors
+        self._model = None
+        self._step = 0
+
+        self.tensors = ()
+        self.names = ()
+
+    def set_model(self, model):
+        self._model = model
+
+    def aggregate_callback(self, results):
+        if self._aggregate_callback is not None:
+            self._aggregate_callback(self._model, results)
+
+    def begin(self):
+        pass
+
+    def after_create_session(self, session, coord):
+        graph = tf.get_default_graph()
+        tensors = [(graph.get_tensor_by_name(name + ":0"), name) for name in self._fetch_tensors]
+        self.tensors, self.names = zip(*tensors)
+
+    def before_run(self, run_context):
+        if self._fetch_tensors is not None:
+            return tf.train.SessionRunArgs(self.tensors)
+
+    def after_run(self, run_context, run_values):
+        if self._step_callback is not None:
+            self._step += 1
+            self._step_callback(self._model, dict(zip(self.names, run_values.results)), self._step)
+
 class Model(object):
     current = None
     
@@ -226,9 +261,9 @@ class Model(object):
     def data(self, data_parser):
         self.__data_parser = data_parser
 
-    def _estimator_hook(self, func, steps, callback, log=None, summary=None):
-        def hook(model, step):
-            results = func(epochs=1, log=log, summary=summary, leave_bar=False)
+    def _estimator_hook(self, func, steps, callback, log=None, summary=None, hooks=None):
+        def hook(model, step, hooks):
+            results = func(epochs=1, log=log, summary=summary, hooks=hooks, leave_bar=False)
             callback(results)
 
         self.__callbacks.append(tf.train.CheckpointSaverHook(
@@ -236,13 +271,27 @@ class Model(object):
             save_steps=steps
         ))
 
-        self.add_callback(steps, lambda model, step: hook(model, step))
+        self.add_callback(steps, lambda model, step: hook(model, step, hooks))
 
-    def eval_hook(self, steps, callback, log=None, summary=None):
-        self._estimator_hook(self.evaluate, steps, callback, log, summary)
+    def eval_hook(self, steps, eval_callback, log=None, summary=None):
+        eval_callback.set_model(self)        
+        self._estimator_hook(
+            self.evaluate, 
+            steps, 
+            eval_callback.aggregate_callback, 
+            log, 
+            summary,
+            [eval_callback]
+        )
 
     def predict_hook(self, steps, callback, log=None, summary=None):
-        self._estimator_hook(self.predict, steps, callback, log, summary)
+        self._estimator_hook(
+            self.predict, 
+            steps, 
+            callback, 
+            log, 
+            summary
+        )
     
     def train(self, epochs, epochs_per_eval, eval_callback=None, eval_log=None, eval_summary=None):
         self.__epoch_bar = bar(total=epochs)
@@ -273,18 +322,19 @@ class Model(object):
                 except:
                     print('You have no `evaluation` dataset')
 
-    def predict(self, epochs, log=None, summary=None, leave_bar=True):
+    def predict(self, epochs, log=None, summary=None, hooks=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
-        tf_hooks = [TqdmHook(self.__step_bar)]
+        hooks = hooks or []
+        hooks += [TqdmHook(self.__step_bar)]
 
         if log is not None:
-            tf_hooks.append(tf.train.LoggingTensorHook(
+            hooks.append(tf.train.LoggingTensorHook(
                 tensors=log,
                 every_n_iter=1
             ))
 
         if summary is not None:
-            tf_hooks.append(CustomSummarySaverHook(
+            hooks.append(CustomSummarySaverHook(
                 summary_op=summary,
                 save_steps=1,
                 output_dir=os.path.join(self.classifier().model_dir, 'pred')
@@ -292,27 +342,37 @@ class Model(object):
 
         return self.classifier().predict(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
-            hooks=tf_hooks
+            hooks=hooks
         )
 
-    def evaluate(self, epochs, log=None, summary=None, leave_bar=True):
+    def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
-        tf_hooks = [TqdmHook(self.__step_bar)]
+        hooks = hooks or []
+        hooks += [TqdmHook(self.__step_bar)]
+
+        if eval_callback is not None:
+            eval_callback.set_model(self)
+            hooks += [eval_callback]
 
         if log is not None:
-            tf_hooks.append(tf.train.LoggingTensorHook(
+            hooks.append(tf.train.LoggingTensorHook(
                 tensors=log,
                 every_n_iter=1
             ))
 
         if summary is not None:
-            tf_hooks.append(CustomSummarySaverHook(
+            hooks.append(CustomSummarySaverHook(
                 summary_op=summary,
                 save_steps=1,
                 output_dir=os.path.join(self.classifier().model_dir, 'eval')
             ))
 
-        return self.classifier().evaluate(
+        results = self.classifier().evaluate(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs),
-            hooks=tf_hooks
+            hooks=hooks
         )
+
+        if eval_callback is not None:
+            eval_callback.aggregate_callback(results)
+
+        return results
