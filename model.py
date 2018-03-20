@@ -160,6 +160,11 @@ class DataParser(object):
             dataset = dataset.batch(batch_size)
             
         iterator = dataset.make_one_shot_iterator()
+
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            features = iterator.get_next()
+            return features
+        
         features, labels = iterator.get_next()
         return features, labels
 
