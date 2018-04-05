@@ -98,6 +98,9 @@ class DataParser(object):
             (tf.estimator.ModeKeys.EVAL, None)
         ])
 
+    def has(self, mode):
+        return self.__input_fn[mode] is not None
+
     def from_generator(self, parser_fn, generator, output_types, output_shapes=None, 
         pre_shuffle=False, post_shuffle=False, flatten=False, 
         num_samples=None, batch_size=1,
@@ -143,7 +146,7 @@ class DataParser(object):
         dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
 
         if flatten:
-            dataset = dataset.flat_map(lambda x, y: tf.data.Dataset.from_tensor_slices((x, y)))
+            dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
 
         if batch_size > 0:
             dataset = dataset.prefetch(batch_size)
@@ -321,10 +324,10 @@ class Model(object):
 
             # Try to do an eval
             if eval_callback is not None:
-                try:
+                if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
                     results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
                     eval_callback(results)
-                except:
+                else:
                     print('You have no `evaluation` dataset')
 
     def predict(self, epochs, log=None, summary=None, hooks=None, leave_bar=True):
