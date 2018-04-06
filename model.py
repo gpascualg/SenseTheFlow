@@ -4,6 +4,8 @@ import numpy as np
 from .config import bar
 from heapq import heappush, heappop
 from functools import partial
+from queue import Queue
+from threading import Thread
 import os
 
 try:
@@ -384,3 +386,39 @@ class Model(object):
             eval_callback.aggregate_callback(results)
 
         return results
+
+    def generator_from_eval(self, interpreter, tensors):
+        generatorSetup = GeneratorFromEval(self, interpreter, tensors)
+        return generatorSetup.generator
+
+
+class GeneratorFromEval(object):
+    def __init__(self, model, interpreter, tensors):
+        self.__eval_callback = EvalCallback(
+            step_callback=self._step,
+            aggregate_callback=self._done,
+            fetch_tensors=tensors
+        )
+        self.__model = model
+        self.__interpreter = interpreter
+        self.__queue = Queue()
+
+        # Launch
+        self.__thread = Thread(target=self._run)
+
+    def _run(self):
+        self.__model.evaluate(1, eval_callback=self.__eval_callback)
+
+    def _step(self, model, results):
+        result = self.__interpreter(model, results)
+        self.__queue.put(result)
+
+    def _done(self, mode, results):
+        self.__queue.put(None)
+
+    def generator(self):
+        while True:
+            data = self.__queue.get()
+            if data is None:
+                raise StopIteration
+            yield data
