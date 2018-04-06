@@ -9,6 +9,24 @@ import tqdm as tq # conda install -c conda-forge tqdm
 import traceback
 
 
+##########################################
+# Note: This will only work if running in a custom jupyter
+#  environment that sends SIGTERM before restarting kernels,
+#  otherwise jupyter send SIGKILL directly, which is not
+#  handlable
+import signal
+
+ROCKS_DB_POOL = []
+
+def signal_handler(signal, frame):
+    global ROCKS_DB_POOL
+    for db in ROCKS_DB_POOL:
+        db.close()
+
+signal.signal(signal.SIGTERM, signal_handler)
+##########################################
+
+
 class RocksConcat(object):
     def __init__(self, stores, elements_per_iter):
         self.stores = stores
@@ -96,8 +114,13 @@ class RocksWildcard(object):
         self.itr = None
         self.db = None
 
+        global ROCKS_DB_POOL
+        ROCKS_DB_POOL.append(self)
+
         # If append, get last used key
         if append:
+            raise NotImplementedError("Must be redone")
+
             itr = self.values.iterator()
             itr.last()
             
@@ -108,11 +131,14 @@ class RocksWildcard(object):
         self.last_key += 1
         return str(self.last_key).zfill(self.max_key_size).encode()
 
-    def close(self):
+    def close_iterator(self):
         if self.itr is not None:
             self.itr.close()
             self.itr = None
-            
+
+    def close(self):
+        self.close_iterator()
+
         if self.db is not None:
             self.db.close()
             self.db = None
@@ -138,13 +164,16 @@ class RocksNumpy(RocksWildcard):
         size = np.prod(shape)
 
         while True:
-            while itr.valid():
+            while self.itr is not None and itr.valid():
                 ptr, plen = itr.value()
                 array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
                 value = np.ctypeslib.as_array(array_ptr)
                 yield value.reshape(shape).astype(self.dtype)
 
                 itr.next()
+
+            if self.itr is None:
+                break
 
             itr.first()
 
