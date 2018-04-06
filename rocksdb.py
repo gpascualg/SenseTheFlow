@@ -145,12 +145,12 @@ class RocksWildcard(object):
 
 
 class RocksNumpy(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
         # Initialize parent
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size)
+        self.db = RocksDB(name, max_key_size, read_only)
 
     def put(self, data):
         key_str = RocksWildcard.get_key(self)
@@ -185,12 +185,12 @@ class RocksNumpy(RocksWildcard):
 
 
 class RocksBytes(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
         # Initialize parent
         RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size)
+        self.db = RocksDB(name, max_key_size, read_only)
 
     
     def put(self, data):
@@ -220,8 +220,8 @@ class RocksBytes(RocksWildcard):
 
 
 class RocksString(RocksBytes):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
-        RocksBytes.__init__(self, name, max_key_size, append, delete, dtype)
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
+        RocksBytes.__init__(self, name, max_key_size, append, delete, read_only, dtype)
     
     def put(self, data):
         return RocksBytes.put(self, data.encode())
@@ -264,7 +264,7 @@ class RocksIterator(object):
        
     
 class RocksDB(object):    
-    def __init__(self, name, max_key_size):
+    def __init__(self, name, max_key_size, read_only):
         dll = RocksDLL.get()
         
         #Options
@@ -298,7 +298,10 @@ class RocksDB(object):
         # Create
         self.db_err = ctypes.c_char_p()
         self.db_err_ptr = ctypes.pointer(self.db_err)
-        self.db = dll.rocksdb_open(opts, name.encode(), self.db_err_ptr)
+        if read_only:
+            self.db = dll.rocksdb_open_for_read_only(opts, name.encode(), 0, self.db_err_ptr)
+        else:
+            self.db = dll.rocksdb_open(opts, name.encode(), self.db_err_ptr)
         self.check_error()
         
         # Create read/write opts
@@ -380,6 +383,9 @@ class RocksDLL(object):
 
             dll.rocksdb_open.restype = ctypes.c_void_p
             dll.rocksdb_open.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p)]
+
+            dll.rocksdb_open_for_read_only.restype = ctypes.c_void_p
+            dll.rocksdb_open_for_read_only.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8, ctypes.POINTER(ctypes.c_char_p)]
 
             dll.rocksdb_readoptions_create.restype = ctypes.c_void_p
             dll.rocksdb_writeoptions_create.restype = ctypes.c_void_p
