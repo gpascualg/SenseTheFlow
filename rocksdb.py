@@ -57,7 +57,7 @@ class RocksStore(object):
             yield tuple([next(itr) for itr in itrs])
 
     def close(self):
-        for db in self.dbs:
+        for db,_ in self.dbs:
             db.close()
 
 
@@ -93,6 +93,8 @@ class RocksWildcard(object):
 
         self.last_key = 0
         self.max_key_size = max_key_size
+        self.itr = None
+        self.db = None
 
         # If append, get last used key
         if append:
@@ -102,11 +104,18 @@ class RocksWildcard(object):
             key_ptr, key_len = itr.key()
             self.last_key = int((ctypes.c_char * key_len.value).from_address(key_ptr).value)
 
-
     def get_key(self):
         self.last_key += 1
         return str(self.last_key).zfill(self.max_key_size).encode()
 
+    def close(self):
+        if self.itr is not None:
+            self.itr.close()
+            self.itr = None
+            
+        if self.db is not None:
+            self.db.close()
+            self.db = None
 
 
 class RocksNumpy(RocksWildcard):
@@ -124,9 +133,8 @@ class RocksNumpy(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
                                    key_len=self.max_key_size, value_len=data.size * self.dsize)
 
-
     def iterate(self, shape, cyclic=True):
-        itr = self.db.iterator()
+        self.itr = itr = self.db.iterator()
         size = np.prod(shape)
 
         while True:
@@ -144,9 +152,7 @@ class RocksNumpy(RocksWildcard):
                 break
 
         itr.close()
-
-    def close(self):
-        self.db.close()
+        self.itr = None
 
 
 class RocksBytes(RocksWildcard):
@@ -165,7 +171,7 @@ class RocksBytes(RocksWildcard):
                                     value_len=len(data))
     
     def iterate(self, _=None, cyclic=True):
-        itr = self.db.iterator()
+        self.itr = itr = self.db.iterator()
 
         while True:
             while itr.valid():
@@ -181,9 +187,8 @@ class RocksBytes(RocksWildcard):
                 break
 
         itr.close()
-    
-    def close(self):
-        self.db.close()
+        self.itr = None
+
 
 class RocksString(RocksBytes):
     def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
