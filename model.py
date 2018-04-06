@@ -233,6 +233,8 @@ class Model(object):
         self.__classifier = None
         self.__callbacks = []
 
+        self.__clean = []
+
         # Set up a RunConfig to only save checkpoints once per training cycle.
         if run_config is None:
             run_config = tf.estimator.RunConfig() \
@@ -266,10 +268,17 @@ class Model(object):
         return self
 
     def __exit__(self, type, value, tb):
+        for fnc in self.__clean:
+            fnc()
         Model.current = None       
 
     def data(self, data_parser):
         self.__data_parser = data_parser
+        return self
+
+    def clean(self, what):
+        assert callable(what), "Argument should be callable"
+        self.__clean.append(what)
 
     def _estimator_hook(self, func, steps, callback, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
