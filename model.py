@@ -415,6 +415,7 @@ class GeneratorFromEval(object):
 
         # Launch
         self.__thread = Thread(target=self._run)
+        self.__thread.start()
 
     def _run(self):
         self.__model.evaluate(1, eval_callback=self.__eval_callback)
