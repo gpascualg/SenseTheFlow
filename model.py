@@ -312,7 +312,7 @@ class Model(object):
             summary
         )
     
-    def train(self, epochs, epochs_per_eval, eval_callback=None, eval_log=None, eval_summary=None):
+    def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
         self.__callbacks += [TqdmHook(self.__step_bar)]
@@ -334,12 +334,13 @@ class Model(object):
             self.__epoch_bar.update(epochs_per_eval)
 
             # Try to do an eval
-            if eval_callback is not None:
-                if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
-                    results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
-                    eval_callback(results)
-                else:
-                    print('You have no `evaluation` dataset')
+            if isinstance(epochs_per_eval, int) and eval_callback is not None:
+                if self.__epoch % epochs_per_eval == 0:
+                    if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
+                        results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
+                        eval_callback(results)
+                    else:
+                        print('You have no `evaluation` dataset')
 
     def predict(self, epochs, log=None, summary=None, hooks=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
