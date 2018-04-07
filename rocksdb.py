@@ -75,8 +75,12 @@ class RocksStore(object):
             yield tuple([next(itr) for itr in itrs])
 
     def close(self):
-        for db,_ in self.dbs:
+        for db, _ in self.dbs:
             db.close()
+
+    def close_iterator(self):
+        for db, _ in self.dbs:
+            db.close_iterator()
 
 
 class RocksWildcard(object):
