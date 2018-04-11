@@ -372,7 +372,7 @@ class Model(object):
                     if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
                         results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
                         if eval_callback is not None:
-                            eval_callback(results)
+                            eval_callback(self, results)
                     else:
                         print('You have no `evaluation` dataset')
 
@@ -427,7 +427,7 @@ class Model(object):
         )
 
         if eval_callback is not None:
-            eval_callback.aggregate_callback(results)
+            eval_callback.aggregate_callback(self, results)
 
         return results
 
