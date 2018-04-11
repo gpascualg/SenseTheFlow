@@ -149,7 +149,7 @@ class DataParser(object):
         self.from_generator(*args, mode=tf.estimator.ModeKeys.PREDICT, **kwargs)
         return self
 
-    def generator_input_fn(self, generator, parser_fn, mode, 
+    def generator_input_fn(self, generator, mode, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
         skip=None, num_samples=None, batch_size=1, num_epochs=1):
 
@@ -162,7 +162,9 @@ class DataParser(object):
         if skip is not None:
             dataset = dataset.skip(skip)
 
-        dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
+        # No need to parse anything?
+        if parser_fn is not None:
+            dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
 
         if flatten:
             dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
