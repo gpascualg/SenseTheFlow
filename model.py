@@ -7,6 +7,7 @@ from heapq import heappush, heappop
 from functools import partial
 from queue import Queue
 from threading import Thread
+from types import SimpleNamespace
 import shutil
 import argparse
 import os
@@ -20,7 +21,7 @@ except:
 # Load some arguments from console
 try:
     get_ipython()
-    args = {"debug": False}
+    args = SimpleNamespace(debug=False)
 except:
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', default=False, action='store_true')
