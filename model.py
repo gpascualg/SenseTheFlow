@@ -367,11 +367,12 @@ class Model(object):
             self.__epoch_bar.update(1)
 
             # Try to do an eval
-            if isinstance(epochs_per_eval, int) and eval_callback is not None:
+            if isinstance(epochs_per_eval, int):
                 if self.__epoch % epochs_per_eval == 0:
                     if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
                         results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
-                        eval_callback(results)
+                        if eval_callback is not None:
+                            eval_callback(results)
                     else:
                         print('You have no `evaluation` dataset')
 
