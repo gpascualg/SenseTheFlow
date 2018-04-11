@@ -131,7 +131,7 @@ class DataParser(object):
         self.__input_fn[mode] = lambda num_epochs: self.generator_input_fn(
             generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
-            num_samples=num_samples, batch_size=batch_size,
+            skip=skip, num_samples=num_samples, batch_size=batch_size,
             mode=mode, num_epochs=num_epochs
         )
         
