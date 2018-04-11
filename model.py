@@ -151,13 +151,16 @@ class DataParser(object):
 
     def generator_input_fn(self, generator, parser_fn, mode, 
         pre_shuffle=False, post_shuffle=False, flatten=False, 
-        num_samples=None, batch_size=1, num_epochs=1):
+        skip=None, num_samples=None, batch_size=1, num_epochs=1):
 
         dataset = tf.data.Dataset.from_generator(**generator)
 
         # Pre-parsing shuffle
         if pre_shuffle:
             dataset = dataset.shuffle(buffer_size=pre_shuffle)
+
+        if skip is not None:
+            dataset = dataset.skip(skip)
 
         dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
 
