@@ -18,9 +18,13 @@ except:
 
 
 # Load some arguments from console
-parser = argparse.ArgumentParser()
-parser.add_argument('--debug', default=False, action='store_true')
-args = parser.parse_args()
+try:
+    get_ipython()
+    args = {"debug": False}
+except:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', default=False, action='store_true')
+    args = parser.parse_args()
 
 
 class CallbackHook(tf.train.SessionRunHook):
@@ -253,7 +257,8 @@ class Model(object):
             .replace(session_config=self.__config)
 
         if delete_existing:
-            shutil.rmtree(model_dir)
+            try: shutil.rmtree(model_dir)
+            except: pass
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
