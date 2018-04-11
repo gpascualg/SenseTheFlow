@@ -344,7 +344,7 @@ class Model(object):
 
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
-        for self.__epoch in range(0, epochs, epochs_per_eval):
+        for self.__epoch in range(0, epochs):
             logger = tf.train.LoggingTensorHook(
                 tensors={
                     'global_step/step': 'global_step'
@@ -359,7 +359,7 @@ class Model(object):
                 hooks=self.__callbacks + [logger, step_counter]
             )
 
-            self.__epoch_bar.update(epochs_per_eval)
+            self.__epoch_bar.update(1)
 
             # Try to do an eval
             if isinstance(epochs_per_eval, int) and eval_callback is not None:
