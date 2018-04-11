@@ -1,17 +1,26 @@
 import types
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 import numpy as np
 from .config import bar
 from heapq import heappush, heappop
 from functools import partial
 from queue import Queue
 from threading import Thread
+import shutil
+import argparse
 import os
 
 try:
     from inspect import signature
 except:
     from funcsigs import signature
+
+
+# Load some arguments from console
+parser = argparse.ArgumentParser()
+parser.add_argument('--debug', default=False, action='store_true')
+args = parser.parse_args()
 
 
 class CallbackHook(tf.train.SessionRunHook):
@@ -216,7 +225,7 @@ class Model(object):
     current = None
     
     def __init__(self, model_fn, model_dir, 
-        config=None, run_config=None, warm_start_from=None, params={}):
+        config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
@@ -242,6 +251,9 @@ class Model(object):
 
         run_config = run_config \
             .replace(session_config=self.__config)
+
+        if delete_existing:
+            shutil.rmtree(model_dir)
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
@@ -316,6 +328,16 @@ class Model(object):
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
         self.__callbacks += [TqdmHook(self.__step_bar)]
+
+        if args.debug:
+            try:
+                get_ipython()
+                raise Exception("Debugging must be done from command line")
+            except:
+                pass
+
+            self.__callbacks += [tf_debug.LocalCLIDebugHook()]
+
         for self.__epoch in range(0, epochs, epochs_per_eval):
             logger = tf.train.LoggingTensorHook(
                 tensors={
