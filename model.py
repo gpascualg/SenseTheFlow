@@ -117,9 +117,9 @@ class DataParser(object):
     def has(self, mode):
         return self.__input_fn[mode] is not None
 
-    def from_generator(self, parser_fn, generator, output_types, output_shapes=None, 
+    def from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
-        num_samples=None, batch_size=1,
+        skip=None, num_samples=None, batch_size=1,
         mode=tf.estimator.ModeKeys.TRAIN):
 
         generator = {
