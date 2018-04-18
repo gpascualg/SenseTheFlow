@@ -200,13 +200,13 @@ class RocksNumpy(RocksWildcard):
             if self.itr is None:
                 break
 
+            if not cyclic:
+                break
+
             if self.skip is not None:
                 for i in range(self.skip): itr.next()
             else:
                 itr.first()
-
-            if not cyclic:
-                break
 
         itr.close()
         self.itr = None
@@ -254,13 +254,13 @@ class RocksBytes(RocksWildcard):
                 
                 itr.next()
 
+            if not cyclic:
+                break
+
             if self.skip is not None:
                 for i in range(self.skip): itr.next()
             else:
                 itr.first()
-
-            if not cyclic:
-                break
 
         itr.close()
         self.itr = None
