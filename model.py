@@ -349,7 +349,9 @@ class Model(object):
 
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
-        for self.__epoch in range(0, epochs, epochs_per_eval):
+        train_epochs = epochs_per_eval or epochs
+
+        for self.__epoch in range(0, epochs, train_epochs):
             logger = tf.train.LoggingTensorHook(
                 tensors={
                     'global_step/step': 'global_step'
@@ -360,11 +362,11 @@ class Model(object):
             step_counter = tf.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
 
             self.classifier().train(
-                input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=epochs_per_eval),
+                input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs),
                 hooks=self.__callbacks + [logger, step_counter]
             )
 
-            self.__epoch_bar.update(epochs_per_eval)
+            self.__epoch_bar.update(train_epochs)
 
             # Try to do an eval
             if isinstance(epochs_per_eval, int):
