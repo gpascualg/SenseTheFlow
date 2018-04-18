@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--dir', default='.')
     parser.add_argument('--tensorflow', action='store_true')
     parser.add_argument('--tensorflow-version', default='r1.0')
-    parser.add_argument('--bazel-version', default='0.8.0')
+    parser.add_argument('--bazel-version', default='0.11.0')
     parser.add_argument('--caffe', action='store_true')
     parser.add_argument('--gpu', action='store_true')
     parser.add_argument('--opencl', action='store_true')
