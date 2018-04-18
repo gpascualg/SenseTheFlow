@@ -180,7 +180,7 @@ class RocksNumpy(RocksWildcard):
         size = np.prod(shape)
 
         if self.skip is not None:
-            self.itr.seek(str(self.skip).zfill(self.max_key_size))
+            for i in range(self.skip): itr.next()
 
         while True:
             i = 0
@@ -201,7 +201,7 @@ class RocksNumpy(RocksWildcard):
                 break
 
             if self.skip is not None:
-                self.itr.seek(str(self.skip).zfill(self.max_key_size))
+                for i in range(self.skip): itr.next()
             else:
                 itr.first()
 
@@ -238,7 +238,7 @@ class RocksBytes(RocksWildcard):
         self.itr = itr = self.db.iterator()
 
         if self.skip is not None:
-            self.itr.seek(str(self.skip).zfill(self.max_key_size))
+            for i in range(self.skip): itr.next()
 
         while True:
             i = 0
@@ -255,7 +255,7 @@ class RocksBytes(RocksWildcard):
                 itr.next()
 
             if self.skip is not None:
-                self.itr.seek(str(self.skip).zfill(self.max_key_size))
+                for i in range(self.skip): itr.next()
             else:
                 itr.first()
 
@@ -314,7 +314,9 @@ class RocksIterator(object):
         
     def key(self):
         rlen = ctypes.c_size_t()
-        return RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen)), rlen.value
+        ptr = RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen))
+        key = (ctypes.c_char * rlen.value).from_address(ptr)
+        return key.raw.decode(), rlen.value
         
     def value(self):
         rlen = ctypes.c_size_t()
@@ -323,6 +325,12 @@ class RocksIterator(object):
     def seek(self, key):
         key_ptr = ctypes.c_char_p(key.encode())
         RocksDLL.get().rocksdb_iter_seek(self.itr, key_ptr, len(key))
+
+    def status(self):
+        status = ctypes.c_char_p()
+        status_ptr = ctypes.pointer(status)
+        RocksDLL.get().rocksdb_iter_get_error(self.itr, status_ptr)
+        return status.value
 
     def close(self):
         RocksDLL.get().rocksdb_iter_destroy(self.itr)
@@ -342,8 +350,8 @@ class RocksDB(object):
         slice_transform = dll.rocksdb_slicetransform_create_fixed_prefix(max_key_size)
         dll.rocksdb_options_set_prefix_extractor(opts, slice_transform)
         
-#         policy = RocksDB.rocksdb.rocksdb_filterpolicy_create_bloom(10);
-#         RocksDB.rocksdb.rocksdb_options_set_filter_policy(opts, policy);
+        # policy = dll.rocksdb_filterpolicy_create_bloom(10);
+        # dll.rocksdb_options_set_filter_policy(opts, policy);
         dll.rocksdb_options_set_plain_table_factory(opts, max_key_size, 10, 0.75, 16)
     
         # Disable compression
@@ -454,6 +462,7 @@ class RocksDLL(object):
 
             dll.rocksdb_readoptions_create.restype = ctypes.c_void_p
             dll.rocksdb_writeoptions_create.restype = ctypes.c_void_p
+            dll.rocksdb_readoptions_set_total_order_seek.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
 
             dll.rocksdb_put.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                                         ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)]
@@ -479,6 +488,7 @@ class RocksDLL(object):
             dll.rocksdb_iter_value.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
             dll.rocksdb_iter_destroy.argtypes = [ctypes.c_void_p]
             dll.rocksdb_iter_seek.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
-            
+            dll.rocksdb_iter_get_error.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_char_p)]
+
         return RocksDLL.rocksdll
 
