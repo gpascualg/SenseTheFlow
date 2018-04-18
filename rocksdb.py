@@ -184,6 +184,7 @@ class RocksNumpy(RocksWildcard):
 
         while True:
             i = 0
+
             while self.itr is not None and itr.valid():
                 ptr, plen = itr.value()
                 array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
@@ -214,7 +215,7 @@ class RocksNumpy(RocksWildcard):
         assert self.read_only, "Database must be in read only mode"
 
         split_a = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
-        split_b = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        split_b = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
         return split_a, split_b
 
 
@@ -241,11 +242,13 @@ class RocksBytes(RocksWildcard):
 
         while True:
             i = 0
+
             while itr.valid():
                 ptr, plen = itr.value()
                 label = (ctypes.c_char * plen).from_address(ptr)
                 yield label.raw
 
+                i += 1
                 if self.num_samples is not None and i >= self.num_samples:
                     break
                 
@@ -266,7 +269,7 @@ class RocksBytes(RocksWildcard):
         assert self.read_only, "Database must be in read only mode"
 
         split_a = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
-        split_b = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        split_b = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
         return split_a, split_b
 
 
@@ -285,7 +288,7 @@ class RocksString(RocksBytes):
         assert self.read_only, "Database must be in read only mode"
 
         split_a = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
-        split_b = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        split_b = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
         return split_a, split_b
 
 
