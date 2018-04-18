@@ -60,6 +60,19 @@ class RocksStore(object):
     def add(self, db, shape=None):
         self.dbs.append((db, shape))
 
+    def split(self, num_samples):
+        splits = [(db.split(num_samples), shape) for db, shape in self.dbs]
+        
+        split_a = RocksStore()
+        split_b = RocksStore()
+
+        for (db_a, db_b), shape in splits:
+            split_a.add(db_a, shape)
+            split_b.add(db_b, shape)
+
+        return split_a, split_b
+
+
     def concat(self, other, elements_per_iter_self=1, elements_per_iter_other=1):
         return RocksConcat([self, other], [elements_per_iter_self, elements_per_iter_other])
 
@@ -79,7 +92,7 @@ class RocksStore(object):
 
 
 class RocksWildcard(object):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         if delete:
             try:
                 shutil.rmtree(name)
@@ -108,10 +121,14 @@ class RocksWildcard(object):
         except:
             pass
 
+        self.name = name
         self.last_key = 0
         self.max_key_size = max_key_size
+        self.read_only = read_only
         self.itr = None
         self.db = None
+        self.skip = skip
+        self.num_samples = num_samples
 
         global ROCKS_DB_POOL
         ROCKS_DB_POOL.append(self)
@@ -144,9 +161,9 @@ class RocksWildcard(object):
 
 
 class RocksNumpy(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
-        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
+        RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
         self.db = RocksDB(name, max_key_size, read_only)
@@ -162,19 +179,30 @@ class RocksNumpy(RocksWildcard):
         self.itr = itr = self.db.iterator()
         size = np.prod(shape)
 
+        if self.skip is not None:
+            self.itr.seek(str(self.skip).zfill(self.max_key_size))
+
         while True:
+            i = 0
             while self.itr is not None and itr.valid():
                 ptr, plen = itr.value()
                 array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
                 value = np.ctypeslib.as_array(array_ptr)
                 yield value.reshape(shape).astype(self.dtype)
 
+                i += 1
+                if self.num_samples is not None and i >= self.num_samples:
+                    break
+
                 itr.next()
 
             if self.itr is None:
                 break
 
-            itr.first()
+            if self.skip is not None:
+                self.itr.seek(self.skip.zfill(self.max_key_size))
+            else:
+                itr.first()
 
             if not cyclic:
                 break
@@ -182,11 +210,18 @@ class RocksNumpy(RocksWildcard):
         itr.close()
         self.itr = None
 
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
+
+        split_a = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        return split_a, split_b
+
 
 class RocksBytes(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
-        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
+        RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
         self.db = RocksDB(name, max_key_size, read_only)
@@ -201,15 +236,25 @@ class RocksBytes(RocksWildcard):
     def iterate(self, _=None, cyclic=True):
         self.itr = itr = self.db.iterator()
 
+        if self.skip is not None:
+            self.itr.seek(self.skip.zfill(self.max_key_size))
+
         while True:
+            i = 0
             while itr.valid():
                 ptr, plen = itr.value()
                 label = (ctypes.c_char * plen).from_address(ptr)
                 yield label.raw
 
+                if self.num_samples is not None and i >= self.num_samples:
+                    break
+                
                 itr.next()
 
-            itr.first()
+            if self.skip is not None:
+                self.itr.seek(self.skip.zfill(self.max_key_size))
+            else:
+                itr.first()
 
             if not cyclic:
                 break
@@ -217,10 +262,17 @@ class RocksBytes(RocksWildcard):
         itr.close()
         self.itr = None
 
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
+
+        split_a = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        return split_a, split_b
+
 
 class RocksString(RocksBytes):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32):
-        RocksBytes.__init__(self, name, max_key_size, append, delete, read_only, dtype)
+    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+        RocksBytes.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
     
     def put(self, data):
         return RocksBytes.put(self, data.encode())
@@ -228,6 +280,13 @@ class RocksString(RocksBytes):
     def iterate(self, _=None, cyclic=True):
         for value in RocksBytes.iterate(self, _, cyclic):
             yield value.decode()
+
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
+
+        split_a = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=num_samples)
+        return split_a, split_b
 
 
 class RocksIterator(object):
@@ -258,6 +317,10 @@ class RocksIterator(object):
         rlen = ctypes.c_size_t()
         return RocksDLL.get().rocksdb_iter_value(self.itr, ctypes.pointer(rlen)), rlen.value
         
+    def seek(self, key):
+        key_ptr = ctypes.c_char_p(key.encode())
+        RocksDLL.get().rocksdb_iter_seek(self.itr, key_ptr, len(key))
+
     def close(self):
         RocksDLL.get().rocksdb_iter_destroy(self.itr)
        
@@ -412,6 +475,7 @@ class RocksDLL(object):
             dll.rocksdb_iter_value.restype = ctypes.c_void_p
             dll.rocksdb_iter_value.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
             dll.rocksdb_iter_destroy.argtypes = [ctypes.c_void_p]
+            dll.rocksdb_iter_seek.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
             
         return RocksDLL.rocksdll
 
