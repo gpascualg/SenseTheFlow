@@ -349,7 +349,7 @@ class Model(object):
 
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
-        for self.__epoch in range(0, epochs):
+        for self.__epoch in range(0, epochs, epochs_per_eval):
             logger = tf.train.LoggingTensorHook(
                 tensors={
                     'global_step/step': 'global_step'
@@ -364,17 +364,16 @@ class Model(object):
                 hooks=self.__callbacks + [logger, step_counter]
             )
 
-            self.__epoch_bar.update(1)
+            self.__epoch_bar.update(epochs_per_eval)
 
             # Try to do an eval
             if isinstance(epochs_per_eval, int):
-                if self.__epoch % epochs_per_eval == 0:
-                    if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
-                        results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
-                        if eval_callback is not None:
-                            eval_callback(self, results)
-                    else:
-                        print('You have no `evaluation` dataset')
+                if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
+                    results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
+                    if eval_callback is not None:
+                        eval_callback(self, results)
+                else:
+                    print('You have no `evaluation` dataset')
 
     def predict(self, epochs, log=None, summary=None, hooks=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
