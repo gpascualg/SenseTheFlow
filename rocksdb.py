@@ -200,7 +200,7 @@ class RocksNumpy(RocksWildcard):
                 break
 
             if self.skip is not None:
-                self.itr.seek(self.skip.zfill(self.max_key_size))
+                self.itr.seek(str(self.skip).zfill(self.max_key_size))
             else:
                 itr.first()
 
@@ -237,7 +237,7 @@ class RocksBytes(RocksWildcard):
         self.itr = itr = self.db.iterator()
 
         if self.skip is not None:
-            self.itr.seek(self.skip.zfill(self.max_key_size))
+            self.itr.seek(str(self.skip).zfill(self.max_key_size))
 
         while True:
             i = 0
@@ -252,7 +252,7 @@ class RocksBytes(RocksWildcard):
                 itr.next()
 
             if self.skip is not None:
-                self.itr.seek(self.skip.zfill(self.max_key_size))
+                self.itr.seek(str(self.skip).zfill(self.max_key_size))
             else:
                 itr.first()
 
