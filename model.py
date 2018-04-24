@@ -349,7 +349,7 @@ class Model(object):
 
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
-        train_epochs = epochs_per_eval or epochs
+        train_epochs = epochs_per_eval or 1
 
         for self.__epoch in range(0, epochs, train_epochs):
             logger = tf.train.LoggingTensorHook(
