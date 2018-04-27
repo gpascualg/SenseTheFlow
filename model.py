@@ -377,7 +377,7 @@ class Model(object):
                 else:
                     print('You have no `evaluation` dataset')
 
-    def predict(self, epochs, log=None, summary=None, hooks=None, leave_bar=True):
+    def predict(self, epochs, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
         hooks = hooks or []
         hooks += [TqdmHook(self.__step_bar)]
@@ -397,10 +397,11 @@ class Model(object):
 
         return self.classifier().predict(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
-            hooks=hooks
+            hooks=hooks,
+            checkpoint_path=checkpoint_path
         )
 
-    def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, leave_bar=True):
+    def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         self.__step_bar = bar(leave=leave_bar)
         hooks = hooks or []
         hooks += [TqdmHook(self.__step_bar)]
@@ -424,7 +425,8 @@ class Model(object):
 
         results = self.classifier().evaluate(
             input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs),
-            hooks=hooks
+            hooks=hooks,
+            checkpoint_path=checkpoint_path
         )
 
         if eval_callback is not None:
