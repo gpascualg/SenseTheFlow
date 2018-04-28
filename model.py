@@ -263,8 +263,18 @@ class Model(object):
             .replace(session_config=self.__config)
 
         if delete_existing:
-            try: shutil.rmtree(model_dir)
-            except: pass
+            delete_now = (delete_existing == 'force')
+
+            if not delete_now:
+                done = False
+                while not done:
+                    res = input('Do you really want to delete all models? [yes/no]: ').lower()
+                    done = (res in ('y', 'yes', 'n', 'no'))
+                    delete_now = (res in ('y', 'yes'))
+
+            if delete_now:
+                try: shutil.rmtree(model_dir)
+                except: pass
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
