@@ -440,7 +440,7 @@ class Model(object):
         )
 
         if eval_callback is not None:
-            eval_callback.aggregate_callback(self, results)
+            eval_callback.aggregate_callback(results)
 
         return results
 
