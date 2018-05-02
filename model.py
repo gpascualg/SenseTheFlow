@@ -215,9 +215,9 @@ class EvalCallback(tf.train.SessionRunHook):
     def set_model(self, model):
         self._model = model
 
-    def aggregate_callback(self, k, results):
+    def aggregate_callback(self, model, k, results):
         if self._aggregate_callback is not None:
-            self._aggregate_callback(self._model, k, results)
+            self._aggregate_callback(model, k, results)
 
     def begin(self):
         pass
@@ -268,8 +268,18 @@ class Model(object):
             .replace(session_config=self.__config)
 
         if delete_existing:
-            try: shutil.rmtree(model_dir)
-            except: pass
+            delete_now = (delete_existing == 'force')
+
+            if not delete_now:
+                done = False
+                while not done:
+                    res = input('Do you really want to delete all models? [yes/no]: ').lower()
+                    done = (res in ('y', 'yes', 'n', 'no'))
+                    delete_now = (res in ('y', 'yes'))
+
+            if delete_now:
+                try: shutil.rmtree(model_dir)
+                except: pass
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
