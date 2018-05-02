@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import shutil
 import argparse
 import os
+import copy
 
 try:
     from inspect import signature
@@ -109,13 +110,16 @@ class CustomSummarySaverHook(tf.train.SummarySaverHook):
 class DataParser(object):
     def __init__(self):
         self.__input_fn = dict([
-            (tf.estimator.ModeKeys.TRAIN, None),
-            (tf.estimator.ModeKeys.PREDICT, None),
-            (tf.estimator.ModeKeys.EVAL, None)
+            (tf.estimator.ModeKeys.TRAIN, []),
+            (tf.estimator.ModeKeys.PREDICT, []),
+            (tf.estimator.ModeKeys.EVAL, [])
         ])
 
     def has(self, mode):
-        return self.__input_fn[mode] is not None
+        return bool(self.__input_fn[mode])
+
+    def num(self, mode):
+        return len(self.__input_fn[mode])
 
     def from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
@@ -128,12 +132,12 @@ class DataParser(object):
             'output_shapes': output_shapes
         }
 
-        self.__input_fn[mode] = lambda num_epochs: self.generator_input_fn(
+        self.__input_fn[mode].append(lambda num_epochs: self.generator_input_fn(
             generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
             skip=skip, num_samples=num_samples, batch_size=batch_size,
             mode=mode, num_epochs=num_epochs
-        )
+        ))
         
         return self
 
@@ -193,8 +197,9 @@ class DataParser(object):
         return features, labels
 
     def input_fn(self, mode, num_epochs):
-        assert self.__input_fn[mode] is not None
-        return self.__input_fn[mode](num_epochs)
+        assert bool(self.__input_fn[mode])
+        for input_fn in self.__input_fn[mode]:
+            yield lambda: input_fn(num_epochs)
 
 class EvalCallback(tf.train.SessionRunHook):
     def __init__(self, aggregate_callback=None, step_callback=None, fetch_tensors=None):
@@ -210,9 +215,9 @@ class EvalCallback(tf.train.SessionRunHook):
     def set_model(self, model):
         self._model = model
 
-    def aggregate_callback(self, results):
+    def aggregate_callback(self, k, results):
         if self._aggregate_callback is not None:
-            self._aggregate_callback(self._model, results)
+            self._aggregate_callback(self._model, k, results)
 
     def begin(self):
         pass
@@ -336,6 +341,8 @@ class Model(object):
         )
     
     def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
+        assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
+
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
         self.__callbacks += [TqdmHook(self.__step_bar)]
@@ -361,78 +368,121 @@ class Model(object):
 
             step_counter = tf.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
 
-            self.classifier().train(
-                input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs),
-                hooks=self.__callbacks + [logger, step_counter]
-            )
+            for input_fn in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
+                self.classifier().train(
+                    input_fn=input_fn,
+                    hooks=self.__callbacks + [logger, step_counter]
+                )
 
             self.__epoch_bar.update(train_epochs)
 
             # Try to do an eval
             if isinstance(epochs_per_eval, int):
                 if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
-                    results = self.evaluate(epochs=1, log=eval_log, summary=eval_summary, leave_bar=False)
-                    if eval_callback is not None:
-                        eval_callback(self, results)
+                    results = self.evaluate(epochs=1, eval_callback=eval_callback, log=eval_log, summary=eval_summary, leave_bar=False)
                 else:
                     print('You have no `evaluation` dataset')
 
     def predict(self, epochs, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
-        self.__step_bar = bar(leave=leave_bar)
-        hooks = hooks or []
-        hooks += [TqdmHook(self.__step_bar)]
+        total = self.__data_parser.num(tf.estimator.ModeKeys.PREDICT)
 
-        if log is not None:
-            hooks.append(tf.train.LoggingTensorHook(
-                tensors=log,
-                every_n_iter=1
-            ))
+        for k, input_fn in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs)):
+            if hooks is not None:
+                pred_hooks = copy.copy(hooks)
+            else:
+                pred_hooks = []
 
-        if summary is not None:
-            hooks.append(CustomSummarySaverHook(
-                summary_op=summary,
-                save_steps=1,
-                output_dir=os.path.join(self.classifier().model_dir, 'pred')
-            ))
+            self.__step_bar = bar(leave=Model._getat(leave_bar, k))
+            pred_hooks += [TqdmHook(self.__step_bar)]
 
-        return self.classifier().predict(
-            input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs),
-            hooks=hooks,
-            checkpoint_path=checkpoint_path
-        )
+            if log is not None:
+                pred_hooks.append(tf.train.LoggingTensorHook(
+                    tensors=Model._getat(log, k),
+                    every_n_iter=1
+                ))
+
+            if summary is not None:
+                name = 'pred' if total == 1 else 'pred-{}'.format(k)
+                pred_hooks.append(CustomSummarySaverHook(
+                    summary_op=Model._getat(summary, k),
+                    save_steps=1,
+                    output_dir=os.path.join(self.classifier().model_dir, name)
+                ))
+
+        
+            results = self.classifier().predict(
+                input_fn=input_fn,
+                hooks=pred_hooks,
+                checkpoint_path=Model._getat(checkpoint_path, k)
+            )
+
+            # Compatibility with older code, no need to iterate if only one result is available
+            if total == 1:
+                return result
+
+            # Otherwise, yield results
+            yield result
+
+    @staticmethod
+    def _getat(obj, idx):
+        if isinstance(obj, (list, tuple, dict)):
+            return obj[idx]
+        return obj
 
     def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
-        self.__step_bar = bar(leave=leave_bar)
-        hooks = hooks or []
-        hooks += [TqdmHook(self.__step_bar)]
+        total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
 
-        if eval_callback is not None:
-            eval_callback.set_model(self)
-            hooks += [eval_callback]
+        for k, input_fn in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs)):
+            # Copy hooks to avoid modifying global hooks
+            if hooks is not None:
+                eval_hooks = copy.copy(hooks)
+            else:
+                eval_hooks = []
+                
+            self.__step_bar = bar(leave=leave_bar)
+            eval_hooks += [TqdmHook(self.__step_bar)]
 
-        if log is not None:
-            hooks.append(tf.train.LoggingTensorHook(
-                tensors=log,
-                every_n_iter=1
-            ))
+            if log is not None:
+                eval_hooks.append(tf.train.LoggingTensorHook(
+                    tensors=Model._getat(log, k),
+                    every_n_iter=1
+                ))
 
-        if summary is not None:
-            hooks.append(CustomSummarySaverHook(
-                summary_op=summary,
-                save_steps=1,
-                output_dir=os.path.join(self.classifier().model_dir, 'eval')
-            ))
+            if summary is not None:
+                name = 'eval' if total == 1 else 'eval-{}'.format(k)
+                eval_hooks.append(CustomSummarySaverHook(
+                    summary_op=Model._getat(summary, k),
+                    save_steps=1,
+                    output_dir=os.path.join(self.classifier().model_dir, name)
+                ))
 
-        results = self.classifier().evaluate(
-            input_fn=lambda: self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs),
-            hooks=hooks,
-            checkpoint_path=checkpoint_path
-        )
+            if eval_callback is not None:
+                current_eval_callback = Model._getat(eval_callback, k)
+                if isinstance(current_eval_callback, EvalCallback):
+                    current_eval_callback.set_model(self)
+                    eval_hooks += [current_eval_callback]
 
-        if eval_callback is not None:
-            eval_callback.aggregate_callback(self, results)
+            results = self.classifier().evaluate(
+                input_fn=input_fn,
+                hooks=eval_hooks,
+                checkpoint_path=checkpoint_path
+            )
 
-        return results
+            if eval_callback is not None:
+                current_eval_callback = Model._getat(eval_callback, k)
+                aggregate_callback = current_eval_callback
+
+                if isinstance(current_eval_callback, EvalCallback):
+                   aggregate_callback = eval_callback.aggregate_callback
+                    
+                aggregate_callback(self, k, results)
+
+            # Compatibility with older code, no need to iterate if only one result is available
+            if total == 1:
+                return result
+
+            # Otherwise, yield results
+            yield result
 
     def generator_from_eval(self, interpreter, tensors):
         generatorSetup = GeneratorFromEval(self, interpreter, tensors)
