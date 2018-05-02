@@ -208,12 +208,16 @@ class EvalCallback(tf.train.SessionRunHook):
         self._fetch_tensors = fetch_tensors
         self._model = None
         self._step = 0
+        self._k = 0
 
         self.tensors = ()
         self.names = ()
 
     def set_model(self, model):
         self._model = model
+
+    def set_k(self, k):
+        self._k = k
 
     def aggregate_callback(self, model, k, results):
         if self._aggregate_callback is not None:
@@ -234,7 +238,7 @@ class EvalCallback(tf.train.SessionRunHook):
     def after_run(self, run_context, run_values):
         if self._step_callback is not None:
             self._step += 1
-            self._step_callback(self._model, dict(zip(self.names, run_values.results)), self._step)
+            self._step_callback(self._model, dict(zip(self.names, run_values.results)), self._k, self._step)
 
 class Model(object):
     current = None
@@ -470,6 +474,7 @@ class Model(object):
                 current_eval_callback = Model._getat(eval_callback, k)
                 if isinstance(current_eval_callback, EvalCallback):
                     current_eval_callback.set_model(self)
+                    current_eval_callback.set_k(k)
                     eval_hooks += [current_eval_callback]
 
             results = self.classifier().evaluate(
