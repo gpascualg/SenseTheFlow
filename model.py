@@ -393,7 +393,8 @@ class Model(object):
             # Try to do an eval
             if isinstance(epochs_per_eval, int):
                 if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
-                    results = self.evaluate(epochs=1, eval_callback=eval_callback, log=eval_log, summary=eval_summary, leave_bar=False)
+                    evaluator = self.evaluate(epochs=1, eval_callback=eval_callback, log=eval_log, summary=eval_summary, leave_bar=False)
+                    _ = list(evaluator)  # Force generator to iterate all elements
                 else:
                     print('You have no `evaluation` dataset')
 
@@ -430,12 +431,8 @@ class Model(object):
                 checkpoint_path=Model._getat(checkpoint_path, k)
             )
 
-            # Compatibility with older code, no need to iterate if only one result is available
-            if total == 1:
-                return result
-
-            # Otherwise, yield results
-            yield result
+            # Keep yielding all results
+            yield results
 
     @staticmethod
     def _getat(obj, idx):
@@ -492,12 +489,8 @@ class Model(object):
                     
                 aggregate_callback(self, k, results)
 
-            # Compatibility with older code, no need to iterate if only one result is available
-            if total == 1:
-                return result
-
-            # Otherwise, yield results
-            yield result
+            # Keep yielding all results
+            yield results
 
     def generator_from_eval(self, interpreter, tensors):
         generatorSetup = GeneratorFromEval(self, interpreter, tensors)
