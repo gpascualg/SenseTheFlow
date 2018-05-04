@@ -1,10 +1,10 @@
+from .config import bar
+from . import tfhooks
+
 import types
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 import numpy as np
-from .config import bar
-from heapq import heappush, heappop
-from functools import partial
 from queue import Queue
 from threading import Thread
 from types import SimpleNamespace
@@ -29,83 +29,15 @@ except:
     args = parser.parse_args()
 
 
-class CallbackHook(tf.train.SessionRunHook):
-    """Hook that requests stop at a specified step."""
+# convenience class to access non-existing members
+class DefaultNamespace(SimpleNamespace):
+    def __getattribute__(self, name):
+        try:
+            val = SimpleNamespace.__getattribute__(self, name)
+            return lambda _: val
+        except:
+            return lambda d = None: d
 
-    def __init__(self, num_steps, callback, model):
-        self._num_steps = num_steps
-        self._callback = callback
-        self._model = model
-
-    def begin(self):
-        self._global_step_tensor = tf.train.get_global_step()
-        if self._global_step_tensor is None:
-            raise RuntimeError("Global step should be created to use StopAtStepHook.")
-
-    def after_create_session(self, session, coord):
-        pass
-
-    def before_run(self, run_context):  # pylint: disable=unused-argument
-        return tf.train.SessionRunArgs(self._global_step_tensor)
-
-    def after_run(self, run_context, run_values):
-        global_step = run_values.results
-        if (global_step - 2) % self._num_steps == 0:
-            self._callback(self._model, global_step)
-
-
-class TqdmHook(tf.train.SessionRunHook):
-    def __init__(self, bar):
-        self._bar = bar
-        self._last_step = 0
-
-    def begin(self):
-        self._global_step_tensor = tf.train.get_global_step()
-        if self._global_step_tensor is None:
-            raise RuntimeError("Global step should be created to use StopAtStepHook.")
-
-    def after_create_session(self, session, coord):
-        pass
-
-    def before_run(self, run_context):  # pylint: disable=unused-argument
-        loss = [x for x in tf.get_collection(tf.GraphKeys.LOSSES)]
-        return tf.train.SessionRunArgs(loss + [self._global_step_tensor])
-
-    def after_run(self, run_context, run_values):
-        loss, global_step = sum(run_values.results[:-1]), run_values.results[-1]
-        update = global_step - self._last_step
-        self._last_step = global_step
-
-        self._bar.update(update)
-        self._bar.set_description('Loss: {}'.format(loss))
-
-
-class CustomSummarySaverHook(tf.train.SummarySaverHook):
-    def __init__(self,
-               save_steps=None,
-               save_secs=None,
-               output_dir=None,
-               summary_writer=None,
-               scaffold=None,
-               summary_op=None):
-
-        tf.train.SummarySaverHook.__init__(self, 
-            save_steps=save_steps,
-            save_secs=save_secs,
-            output_dir=output_dir,
-            summary_writer=summary_writer,
-            scaffold=scaffold,
-            summary_op=summary_op)
-
-    def _get_summary_op(self):
-        tensors = [x for x in tf.get_collection(tf.GraphKeys.SUMMARIES) if x.op.name in self._summary_op]
-
-        if len(tensors) != len(self._summary_op):
-            tf.logging.error('Some tensors where not found')
-            tnames = [x.op.name for x in tensors]
-            tf.logging.error(set(self._summary_op) - set(tnames))
-
-        return tensors
 
 class DataParser(object):
     def __init__(self):
@@ -124,7 +56,7 @@ class DataParser(object):
     def from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
         skip=None, num_samples=None, batch_size=1,
-        mode=tf.estimator.ModeKeys.TRAIN):
+        mode=tf.estimator.ModeKeys.TRAIN, **kwargs):
 
         generator = {
             'generator': generator, 
@@ -132,12 +64,14 @@ class DataParser(object):
             'output_shapes': output_shapes
         }
 
-        self.__input_fn[mode].append(lambda num_epochs: self.generator_input_fn(
+        input_fn = lambda num_epochs: self.generator_input_fn(
             generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
             skip=skip, num_samples=num_samples, batch_size=batch_size,
             mode=mode, num_epochs=num_epochs
-        ))
+        )
+
+        self.__input_fn[mode].append((input_fn, DefaultNamespace(**kwargs)))
         
         return self
 
@@ -198,8 +132,8 @@ class DataParser(object):
 
     def input_fn(self, mode, num_epochs):
         assert bool(self.__input_fn[mode])
-        for input_fn in self.__input_fn[mode]:
-            yield lambda: input_fn(num_epochs)
+        for input_fn, args in self.__input_fn[mode]:
+            yield (lambda: input_fn(num_epochs), args)
 
 class EvalCallback(tf.train.SessionRunHook):
     def __init__(self, aggregate_callback=None, step_callback=None, fetch_tensors=None):
@@ -293,7 +227,7 @@ class Model(object):
         assert type(func) == types.FunctionType, "Expected a function in func"
         assert len(signature(func).parameters) == 2, "Expected func to have 2 parameters (model, step)"
         
-        self.__callbacks.append(CallbackHook(steps, func, self))
+        self.__callbacks.append(tfhooks.CallbackHook(steps, func, self))
 
     # Getters
     def epoch(self):
@@ -359,15 +293,9 @@ class Model(object):
 
         self.__epoch_bar = bar(total=epochs)
         self.__step_bar = bar()
-        self.__callbacks += [TqdmHook(self.__step_bar)]
+        self.__callbacks += [tfhooks.TqdmHook(self.__step_bar)]
 
         if args.debug:
-            try:
-                get_ipython()
-                raise Exception("Debugging must be done from command line")
-            except:
-                pass
-
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
         train_epochs = epochs_per_eval or 1
@@ -382,7 +310,7 @@ class Model(object):
 
             step_counter = tf.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
 
-            for input_fn in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
+            for (input_fn, params) in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
                 self.classifier().train(
                     input_fn=input_fn,
                     hooks=self.__callbacks + [logger, step_counter]
@@ -401,25 +329,26 @@ class Model(object):
     def predict(self, epochs, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         total = self.__data_parser.num(tf.estimator.ModeKeys.PREDICT)
 
-        for k, input_fn in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs)):
-            if hooks is not None:
-                pred_hooks = copy.copy(hooks)
+        for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs)):
+            pred_hooks = params.hooks(hooks)
+            if pred_hooks is not None:
+                pred_hooks = copy.copy(pred_hooks)
             else:
                 pred_hooks = []
 
-            self.__step_bar = bar(leave=Model._getat(leave_bar, k))
-            pred_hooks += [TqdmHook(self.__step_bar)]
+            self.__step_bar = bar(leave=params.leave_bar(leave_bar))
+            pred_hooks += [args.TqdmHook(self.__step_bar)]
 
             if log is not None:
                 pred_hooks.append(tf.train.LoggingTensorHook(
-                    tensors=Model._getat(log, k),
+                    tensors=params.log(log),
                     every_n_iter=1
                 ))
 
             if summary is not None:
                 name = 'pred' if total == 1 else 'pred-{}'.format(k)
-                pred_hooks.append(CustomSummarySaverHook(
-                    summary_op=Model._getat(summary, k),
+                pred_hooks.append(args.CustomSummarySaverHook(
+                    summary_op=params.summary(summary),
                     save_steps=1,
                     output_dir=os.path.join(self.classifier().model_dir, name)
                 ))
@@ -428,47 +357,42 @@ class Model(object):
             results = self.classifier().predict(
                 input_fn=input_fn,
                 hooks=pred_hooks,
-                checkpoint_path=Model._getat(checkpoint_path, k)
+                checkpoint_path=params.checkpoint_path(checkpoint_path)
             )
 
             # Keep yielding all results
             yield results
 
-    @staticmethod
-    def _getat(obj, idx):
-        if isinstance(obj, (list, tuple, dict)):
-            return obj[idx]
-        return obj
-
     def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
 
-        for k, input_fn in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs)):
+        for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs)):
             # Copy hooks to avoid modifying global hooks
-            if hooks is not None:
-                eval_hooks = copy.copy(hooks)
+            eval_hooks = params.hooks(hooks)
+            if eval_hooks is not None:
+                eval_hooks = copy.copy(eval_hooks)
             else:
                 eval_hooks = []
-                
+            
             self.__step_bar = bar(leave=leave_bar)
-            eval_hooks += [TqdmHook(self.__step_bar)]
+            eval_hooks += [tfhooks.TqdmHook(self.__step_bar)]
 
             if log is not None:
                 eval_hooks.append(tf.train.LoggingTensorHook(
-                    tensors=Model._getat(log, k),
+                    tensors=params.log(log),
                     every_n_iter=1
                 ))
 
             if summary is not None:
                 name = 'eval' if total == 1 else 'eval-{}'.format(k)
-                eval_hooks.append(CustomSummarySaverHook(
-                    summary_op=Model._getat(summary, k),
+                eval_hooks.append(tfhooks.CustomSummarySaverHook(
+                    summary_op=params.summary(summary),
                     save_steps=1,
                     output_dir=os.path.join(self.classifier().model_dir, name)
                 ))
 
             if eval_callback is not None:
-                current_eval_callback = Model._getat(eval_callback, k)
+                current_eval_callback = params.eval_callback(eval_callback)
                 if isinstance(current_eval_callback, EvalCallback):
                     current_eval_callback.set_model(self)
                     current_eval_callback.set_k(k)
@@ -481,7 +405,7 @@ class Model(object):
             )
 
             if eval_callback is not None:
-                current_eval_callback = Model._getat(eval_callback, k)
+                current_eval_callback = params.eval_callback(eval_callback)
                 aggregate_callback = current_eval_callback
 
                 if isinstance(current_eval_callback, EvalCallback):
