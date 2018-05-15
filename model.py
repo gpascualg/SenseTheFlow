@@ -337,7 +337,7 @@ class Model(object):
                 pred_hooks = []
 
             self.__step_bar = bar(leave=params.leave_bar(leave_bar))
-            pred_hooks += [args.TqdmHook(self.__step_bar)]
+            pred_hooks += [tfhooks.TqdmHook(self.__step_bar)]
 
             if log is not None:
                 pred_hooks.append(tf.train.LoggingTensorHook(
