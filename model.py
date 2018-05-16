@@ -256,10 +256,11 @@ class Model(object):
         assert callable(what), "Argument should be callable"
         self.__clean.append(what)
 
-    def _estimator_hook(self, func, steps, callback, log=None, summary=None, hooks=None):
+    def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
             results = func(epochs=1, log=log, summary=summary, hooks=hooks, leave_bar=False)
-            callback(results)
+            if callback is not None:
+                callback(results)
 
         self.__callbacks.append(tf.train.CheckpointSaverHook(
             checkpoint_dir=self.classifier().model_dir,
@@ -271,12 +272,11 @@ class Model(object):
     def eval_hook(self, steps, eval_callback, log=None, summary=None):
         eval_callback.set_model(self)        
         self._estimator_hook(
-            self.evaluate, 
+            lambda *args, **kwargs: self.evaluate(*args, eval_callback=eval_callback, **kwargs), 
             steps, 
-            eval_callback.aggregate_callback, 
+            None, 
             log, 
-            summary,
-            [eval_callback]
+            summary
         )
 
     def predict_hook(self, steps, callback, log=None, summary=None):

@@ -21,6 +21,6 @@ class CallbackHook(tf.train.SessionRunHook):
         return tf.train.SessionRunArgs(self._global_step_tensor)
 
     def after_run(self, run_context, run_values):
-        global_step = run_values.results
+        global_step = run_values.results + 1
         if global_step % self._num_steps == 0:
             self._callback(self._model, global_step)
