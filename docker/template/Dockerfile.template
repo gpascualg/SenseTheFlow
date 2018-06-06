@@ -246,9 +246,11 @@ EXPOSE 22
 [[endif]]
 
 # Jupyter lab
-RUN conda install -y nodejs && \
+RUN conda install -y jupyterlab && \
+	conda install -y nodejs && \
 	jupyter serverextension enable --py jupyterlab --sys-prefix && \
-	jupyter labextension install @jupyter-widgets/jupyterlab-manager
+	jupyter labextension install @jupyter-widgets/jupyterlab-manager@0.33 && \
+	conda update -y -c conda-forge ipywidgets
 
 # Do not directly kill processes for god's sake!
 RUN sed -i -e "s/content = dict(restart=restart)/content = dict(restart=restart)\n        self.signal_kernel(signal.SIGTERM)/" /opt/anaconda/lib/python3.6/site-packages/jupyter_client/manager.py
