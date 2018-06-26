@@ -107,13 +107,13 @@ class RocksWildcard(object):
             self.iter_shape = None
 
             with open(os.path.join(name, '.metadata')) as fp:
-                self.metadata = metadata = yaml.load(metadata)
+                self.metadata = yaml.load(fp)
 
                 # Currently the only supported version
-                if metadata['version'] == 1:
-                    max_key_size = metadata['max_key_size']
-                    dtype = metadata['dtype']
-                    self.iter_shape = metadata['shape']
+                if self.metadata['version'] == 1:
+                    max_key_size = self.metadata['max_key_size']
+                    dtype = self.metadata['dtype']
+                    self.iter_shape = self.metadata['shape']
                 else:
                     raise Exception("Unsupported metada version")
 
