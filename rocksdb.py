@@ -177,6 +177,7 @@ class RocksWildcard(object):
         # Save metadata
         with open(os.path.join(self.name, '.metadata'), 'w') as fp:
             yaml.dump({
+                'version': 1,
                 'max_key_size': self.max_key_size,
                 'dtype': self.typestr,
                 'shape': self.iter_shape
