@@ -232,7 +232,7 @@ class RocksNumpy(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
                                    key_len=self.max_key_size, value_len=data.size * self.dsize)
 
-    def iterate(self, cyclic=True):
+    def iterate(self):
         # Must have a saved iter_shape
         if self.iter_shapeshape is None:
             raise Exception("A non-None shape was expected")
@@ -244,31 +244,18 @@ class RocksNumpy(RocksWildcard):
         if self.skip is not None:
             for i in range(self.skip): itr.next()
 
-        while True:
-            i = 0
+        i = 0
+        while self.itr is not None and itr.valid():
+            ptr, plen = itr.value()
+            array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
+            value = np.ctypeslib.as_array(array_ptr)
+            yield value.reshape(shape).astype(self.dtype)
 
-            while self.itr is not None and itr.valid():
-                ptr, plen = itr.value()
-                array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
-                value = np.ctypeslib.as_array(array_ptr)
-                yield value.reshape(shape).astype(self.dtype)
-
-                i += 1
-                if self.num_samples is not None and i >= self.num_samples:
-                    break
-
-                itr.next()
-
-            if self.itr is None:
+            i += 1
+            if self.num_samples is not None and i >= self.num_samples:
                 break
 
-            if not cyclic:
-                break
-
-            if self.skip is not None:
-                for i in range(self.skip): itr.next()
-            else:
-                itr.first()
+            itr.next()
 
         itr.close()
         self.itr = None
@@ -296,33 +283,23 @@ class RocksBytes(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
                                     value_len=len(data))
     
-    def iterate(self, _=None, cyclic=True):
+    def iterate(self):
         self.itr = itr = self.db.iterator()
 
         if self.skip is not None:
             for i in range(self.skip): itr.next()
 
-        while True:
-            i = 0
+        i = 0
+        while itr.valid():
+            ptr, plen = itr.value()
+            label = (ctypes.c_char * plen).from_address(ptr)
+            yield label.raw
 
-            while itr.valid():
-                ptr, plen = itr.value()
-                label = (ctypes.c_char * plen).from_address(ptr)
-                yield label.raw
-
-                i += 1
-                if self.num_samples is not None and i >= self.num_samples:
-                    break
-                
-                itr.next()
-
-            if not cyclic:
+            i += 1
+            if self.num_samples is not None and i >= self.num_samples:
                 break
-
-            if self.skip is not None:
-                for i in range(self.skip): itr.next()
-            else:
-                itr.first()
+            
+            itr.next()
 
         itr.close()
         self.itr = None
@@ -342,8 +319,8 @@ class RocksString(RocksBytes):
     def put(self, data):
         return RocksBytes.put(self, data.encode())
 
-    def iterate(self, _=None, cyclic=True):
-        for value in RocksBytes.iterate(self, _, cyclic):
+    def iterate(self):
+        for value in RocksBytes.iterate(self):
             yield value.decode()
 
     def split(self, num_samples):
