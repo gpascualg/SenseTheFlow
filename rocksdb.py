@@ -238,8 +238,6 @@ class RocksNumpy(RocksWildcard):
             raise Exception("A non-None shape was expected")
 
         self.itr = itr = self.db.iterator()
-        shape = self.iter_shape
-        size = np.prod(shape)
 
         if self.skip is not None:
             for i in range(self.skip): itr.next()
@@ -247,9 +245,9 @@ class RocksNumpy(RocksWildcard):
         i = 0
         while self.itr is not None and itr.valid():
             ptr, plen = itr.value()
-            array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
+            array_ptr = np.ctypeslib.as_array((self.ctype * (plen // self.dsize)).from_address(ptr))
             value = np.ctypeslib.as_array(array_ptr)
-            yield value.reshape(shape).astype(self.dtype)
+            yield value.reshape(self.iter_shape).astype(self.dtype)
 
             i += 1
             if self.num_samples is not None and i >= self.num_samples:
