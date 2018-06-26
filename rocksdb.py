@@ -58,18 +58,18 @@ class RocksStore(object):
     def __init__(self):
         self.dbs = []
 
-    def add(self, db, shape=None):
-        self.dbs.append((db, shape))
+    def add(self, db):
+        self.dbs.append(db)
 
     def split(self, num_samples):
-        splits = [(db.split(num_samples), shape) for db, shape in self.dbs]
+        splits = [db.split(num_samples) for db in self.dbs]
         
         split_a = RocksStore()
         split_b = RocksStore()
 
-        for (db_a, db_b), shape in splits:
-            split_a.add(db_a, shape)
-            split_b.add(db_b, shape)
+        for db_a, db_b in splits:
+            split_a.add(db_a)
+            split_b.add(db_b)
 
         return split_a, split_b
 
@@ -77,18 +77,18 @@ class RocksStore(object):
     def concat(self, other, elements_per_iter_self=1, elements_per_iter_other=1):
         return RocksConcat([self, other], [elements_per_iter_self, elements_per_iter_other])
 
-    def iterate(self, cyclic=True):
-        itrs = [db.iterate(shape, cyclic=cyclic) for db, shape in self.dbs]
+    def iterate(self):
+        itrs = [db.iterate() for db in self.dbs]
 
         while True:
             yield tuple([next(itr) for itr in itrs])
 
     def close(self):
-        for db, _ in self.dbs:
+        for db in self.dbs:
             db.close()
 
     def close_iterator(self):
-        for db, _ in self.dbs:
+        for db in self.dbs:
             db.close_iterator()
 
 
