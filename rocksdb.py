@@ -92,6 +92,15 @@ class RocksStore(object):
         for db in self.dbs:
             db.close_iterator()
 
+def types(dtype):
+    if dtype == np.float32 or dtype == 'float' or dtype == float:
+        return ctypes.c_float, 4, np.float32, 'float'
+    elif dtype == np.float64 or dtype == 'double':
+        return ctypes.c_double, 8, np.float64, 'double'
+    elif dtype == np.uint8 or dtype == 'uint8':
+        return ctypes.c_uint8, 1, np.uint8, 'uint8'
+    else:
+        raise Exception("Unkown data type")
 
 class RocksWildcard(object):
     def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
@@ -122,23 +131,7 @@ class RocksWildcard(object):
                 raise Exception("Expected non-None max_key_size")
 
         # Check given type
-        if dtype == np.float32 or dtype == 'float' or dtype == float:
-            self.ctype = ctypes.c_float
-            self.dsize = 4
-            self.dtype = np.float32
-            self.typestr = 'float'
-        elif dtype == np.float64 or dtype == 'double':
-            self.ctype = ctypes.c_double
-            self.dsize = 8
-            self.dtype = np.float64
-            self.typestr = 'double'
-        elif dtype == np.uint8 or dtype == 'uint8':
-            self.ctype = ctypes.c_uint8
-            self.dsize = 1
-            self.dtype = np.uint8
-            self.typestr = 'uint8'
-        else:
-            raise Exception("Unkown data type")
+        self.ctype, self.dsize, self.dtype, self.typestr = types(dtype)
         
         # Base folder (try to create it)
         try:
@@ -200,6 +193,17 @@ class RocksWildcard(object):
             self.db = None
 
 
+def serialize_numpy(data, dtype):
+    _, dsize, dtype, _ = types(dtype)
+    contiguous = data.astype(dtype).copy(order='C')
+    return (contiguous.ctypes.data_as(ctypes.c_char_p), data.size * dsize)
+
+def unserialize_numpy(data, dtype, shape):
+    _, _, dtype, _ = types(dtype)
+    array_ptr = np.ctypeslib.as_array(data)
+    value = np.ctypeslib.as_array(array_ptr)
+    return value.reshape(shape).astype(dtype)
+
 class RocksNumpy(RocksWildcard):
     def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
@@ -229,14 +233,13 @@ class RocksNumpy(RocksWildcard):
                     raise Exception("Expected constant shape")
 
         key_str = RocksWildcard.get_key(self)
-        contiguous = data.astype(self.dtype).copy(order='C')
+        contiguous, value_len = serialize_numpy(data, self.dtype)
         
-        return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
-                                   key_len=self.max_key_size, value_len=data.size * self.dsize)
+        return self.db.write(ctypes.c_char_p(key_str), contiguous, key_len=self.max_key_size, value_len=value_len)
 
     def iterate(self):
         # Must have a saved iter_shape
-        if self.iter_shapeshape is None:
+        if self.iter_shape is None:
             raise Exception("A non-None shape was expected")
 
         self.itr = itr = self.db.iterator()
@@ -247,9 +250,8 @@ class RocksNumpy(RocksWildcard):
         i = 0
         while self.itr is not None and itr.valid():
             ptr, plen = itr.value()
-            array_ptr = np.ctypeslib.as_array((self.ctype * (plen // self.dsize)).from_address(ptr))
-            value = np.ctypeslib.as_array(array_ptr)
-            yield value.reshape(self.iter_shape).astype(self.dtype)
+            value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr), self.dtype, self.iter_shape)
+            yield value
 
             i += 1
             if self.num_samples is not None and i >= self.num_samples:
