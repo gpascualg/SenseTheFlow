@@ -2,6 +2,7 @@ import ctypes
 import os
 import shutil
 import numpy as np
+import yaml
 
 
 ##########################################
@@ -92,35 +93,62 @@ class RocksStore(object):
 
 
 class RocksWildcard(object):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         if delete:
             try:
                 shutil.rmtree(name)
             except:
                 pass
             
+        # Try to locate metada file
+        try:
+            # It might be the first run
+            self.iter_shape = None
+
+            with open(os.path.join(name, '.metadata')) as fp:
+                self.metadata = metadata = yaml.load(metadata)
+
+                # Currently the only supported version
+                if metadata['version'] == 1:
+                    max_key_size = metadata['max_key_size']
+                    dtype = metadata['dtype']
+                    self.iter_shape = metadata['shape']
+                else:
+                    raise Exception("Unsupported metada version")
+
+            except (yaml.YAMLError, IOError) as exc:
+                if max_key_size is None:
+                    raise Exception("Expected non-None max_key_size")
+
         # Check given type
         if dtype == np.float32 or dtype == 'float' or dtype == float:
             self.ctype = ctypes.c_float
             self.dsize = 4
             self.dtype = np.float32
+            self.typestr = 'float'
         elif dtype == np.float64 or dtype == 'double':
             self.ctype = ctypes.c_double
             self.dsize = 8
             self.dtype = np.float64
+            self.typestr = 'double'
         elif dtype == np.uint8 or dtype == 'uint8':
             self.ctype = ctypes.c_uint8
             self.dsize = 1
             self.dtype = np.uint8
+            self.typestr = 'uint8'
         else:
             raise Exception("Unkown data type")
-            
+        
         # Base folder (try to create it)
         try:
             os.mkdir(name)
         except:
             pass
 
+        # Checkpoint metadata
+        self._save_metadata()
+
+        # Attributes
         self.name = name
         self.last_key = 0
         self.max_key_size = max_key_size
@@ -130,6 +158,7 @@ class RocksWildcard(object):
         self.skip = skip
         self.num_samples = num_samples
 
+        # Add to opened DBs pool
         global ROCKS_DB_POOL
         ROCKS_DB_POOL.append(self)
 
@@ -142,6 +171,15 @@ class RocksWildcard(object):
             
             key_ptr, key_len = itr.key()
             self.last_key = int((ctypes.c_char * key_len.value).from_address(key_ptr).value)
+
+    def _save_metadata(self):
+        # Save metadata
+        with open(os.path.join(self.name, '.metadata'), 'w') as fp:
+            yaml.dump({
+                'max_key_size': self.max_key_size,
+                'dtype': self.typestr,
+                'shape': self.iter_shape
+            }, fp)
 
     def get_key(self):
         self.last_key += 1
@@ -161,7 +199,7 @@ class RocksWildcard(object):
 
 
 class RocksNumpy(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
         RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
@@ -169,14 +207,38 @@ class RocksNumpy(RocksWildcard):
         self.db = RocksDB(name, max_key_size, read_only)
 
     def put(self, data):
+        # We need flatten arrays
+        if data.ndim > 1:
+            # Save shape and flatten
+            shape = data.shape
+            data = data.ravel()
+
+            # Not saved yet
+            if self.iter_shape is None:
+                self.iter_shape = shape
+                self._save_metadata()
+            # Check consistency
+            else:
+                if self.iter_shape != shape:
+                    raise Exception("Expected constant shape")
+        else:
+            if self.iter_shape is not None:
+                if np.prod(self.iter_shape) != np.prod(data.shape):
+                    raise Exception("Expected constant shape")
+
         key_str = RocksWildcard.get_key(self)
         contiguous = data.astype(self.dtype).copy(order='C')
         
         return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
                                    key_len=self.max_key_size, value_len=data.size * self.dsize)
 
-    def iterate(self, shape, cyclic=True):
+    def iterate(self, cyclic=True):
+        # Must have a saved iter_shape
+        if self.iter_shapeshape is None:
+            raise Exception("A non-None shape was expected")
+
         self.itr = itr = self.db.iterator()
+        shape = self.iter_shape
         size = np.prod(shape)
 
         if self.skip is not None:
@@ -220,7 +282,7 @@ class RocksNumpy(RocksWildcard):
 
 
 class RocksBytes(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
         RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
@@ -274,7 +336,7 @@ class RocksBytes(RocksWildcard):
 
 
 class RocksString(RocksBytes):
-    def __init__(self, name, max_key_size, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         RocksBytes.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
     
     def put(self, data):
