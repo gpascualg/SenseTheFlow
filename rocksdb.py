@@ -201,8 +201,12 @@ def serialize_numpy(data, dtype):
 def unserialize_numpy(data, dtype, shape):
     _, _, dtype, _ = types(dtype)
     array_ptr = np.ctypeslib.as_array(data)
-    value = np.ctypeslib.as_array(array_ptr)
-    return value.reshape(shape).astype(dtype)
+    value = np.ctypeslib.as_array(array_ptr).astype(dtype)
+
+    if shape is None:
+        return value
+    
+    return value.reshape(shape)
 
 class RocksNumpy(RocksWildcard):
     def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
@@ -238,10 +242,6 @@ class RocksNumpy(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), contiguous, key_len=self.max_key_size, value_len=value_len)
 
     def iterate(self):
-        # Must have a saved iter_shape
-        if self.iter_shape is None:
-            raise Exception("A non-None shape was expected")
-
         self.itr = itr = self.db.iterator()
 
         if self.skip is not None:
