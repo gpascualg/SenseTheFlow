@@ -117,9 +117,9 @@ class RocksWildcard(object):
                 else:
                     raise Exception("Unsupported metada version")
 
-            except (yaml.YAMLError, IOError) as exc:
-                if max_key_size is None:
-                    raise Exception("Expected non-None max_key_size")
+        except (yaml.YAMLError, IOError) as exc:
+            if max_key_size is None:
+                raise Exception("Expected non-None max_key_size")
 
         # Check given type
         if dtype == np.float32 or dtype == 'float' or dtype == float:
@@ -146,9 +146,6 @@ class RocksWildcard(object):
         except:
             pass
 
-        # Checkpoint metadata
-        self._save_metadata()
-
         # Attributes
         self.name = name
         self.last_key = 0
@@ -158,6 +155,9 @@ class RocksWildcard(object):
         self.db = None
         self.skip = skip
         self.num_samples = num_samples
+
+        # Checkpoint metadata
+        self._save_metadata()
 
         # Add to opened DBs pool
         global ROCKS_DB_POOL
