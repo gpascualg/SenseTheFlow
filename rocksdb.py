@@ -280,10 +280,11 @@ class RocksBytes(RocksWildcard):
 
     
     def put(self, data, value_len=None):
-        assert isinstance(data, bytes)
+        return self.put_ptr(ctypes.c_char_p(data), value_len or len(data))
+
+    def put_ptr(self, ptr, value_len):
         key_str = RocksWildcard.get_key(self)
-        return self.db.write(ctypes.c_char_p(key_str), ctypes.c_char_p(data), key_len=self.max_key_size,
-                                    value_len=value_len or len(data))
+        return self.db.write(ctypes.c_char_p(key_str), ptr, key_len=self.max_key_size, value_len=value_len)
     
     def iterate(self):
         self.itr = itr = self.db.iterator()
