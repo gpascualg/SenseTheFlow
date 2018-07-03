@@ -93,11 +93,11 @@ class RocksStore(object):
             db.close_iterator()
 
 def types(dtype):
-    if dtype == np.float32 or dtype == 'float' or dtype == float:
+    if dtype in (np.float32, 'float', 'float32', float):
         return ctypes.c_float, 4, np.float32, 'float'
-    elif dtype == np.float64 or dtype == 'double':
+    if dtype in (np.float64, 'float64', 'double'):
         return ctypes.c_double, 8, np.float64, 'double'
-    elif dtype == np.uint8 or dtype == 'uint8':
+    elif dtype in (np.uint8, 'uint8'):
         return ctypes.c_uint8, 1, np.uint8, 'uint8'
     else:
         raise Exception("Unkown data type")
@@ -196,7 +196,7 @@ class RocksWildcard(object):
 def serialize_numpy(data, dtype):
     _, dsize, dtype, _ = types(dtype)
     contiguous = data.astype(dtype).copy(order='C')
-    return (contiguous.ctypes.data_as(ctypes.c_char_p), data.size * dsize)
+    return contiguous.ctypes.data_as(ctypes.c_char_p), data.size * dsize, contiguous
 
 def unserialize_numpy(data, dtype, shape):
     _, _, dtype, _ = types(dtype)
@@ -237,9 +237,8 @@ class RocksNumpy(RocksWildcard):
                     raise Exception("Expected constant shape")
 
         key_str = RocksWildcard.get_key(self)
-        contiguous, value_len = serialize_numpy(data, self.dtype)
-        
-        return self.db.write(ctypes.c_char_p(key_str), contiguous, key_len=self.max_key_size, value_len=value_len)
+        data, value_len, c = serialize_numpy(data, self.dtype)        
+        return self.db.write(ctypes.c_char_p(key_str), data, key_len=self.max_key_size, value_len=value_len)
 
     def iterate(self):
         self.itr = itr = self.db.iterator()
