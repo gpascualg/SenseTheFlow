@@ -214,7 +214,7 @@ class RocksNumpy(RocksWildcard):
         RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size, read_only)
+        self.db = RocksDB(name, self.max_key_size, read_only)
 
     def put(self, data):
         # We need flatten arrays
@@ -275,7 +275,7 @@ class RocksBytes(RocksWildcard):
         RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size, read_only)
+        self.db = RocksDB(name, self.max_key_size, read_only)
 
     
     def put(self, data, value_len=None):
