@@ -2,170 +2,337 @@ import ctypes
 import os
 import shutil
 import numpy as np
-from scipy import misc
-import pandas as pd
-import matplotlib.pyplot as plt
-import tqdm as tq # conda install -c conda-forge tqdm
-import traceback
+import yaml
+
+
+##########################################
+# Note: This will only work if running in a custom jupyter
+#  environment that sends SIGTERM before restarting kernels,
+#  otherwise jupyter sends SIGKILL directly, which is not
+#  handlable
+# Will also work on vanilla python environments (coda included)
+import signal
+
+ROCKS_DB_POOL = []
+
+def signal_handler(signal, frame):
+    global ROCKS_DB_POOL
+    for db in ROCKS_DB_POOL:
+        db.close()
+
+signal.signal(signal.SIGTERM, signal_handler)
+##########################################
+
+
+class RocksConcat(object):
+    def __init__(self, stores, elements_per_iter):
+        self.stores = stores
+        self.elements_per_iter = elements_per_iter
+
+    def iterate(self, cyclic=True):
+        has_done_epoch = [False] * len(self.stores)
+        itrs = [store.iterate(cyclic=cyclic) for store in self.stores]
+
+        while True:
+            if all(has_done_epoch) and not cyclic:
+                raise StopIteration()
+
+            for pos in range(len(self.stores)):
+                results = []
+                itr = itrs[pos]
+
+                while len(results) < self.elements_per_iter[pos]:
+                    try:
+                        results.append(next(itr))
+                    except StopIteration:
+                        itr = itrs[pos] = self.stores[pos].iterate(cyclic=cyclic)
+                        has_done_epoch[pos] = True
+
+                yield tuple(results)
+
+    def concat(self, other, elements_per_iter):
+        self.stores.append(other)
+        self.elements_per_iter.append(elements_per_iter)
 
 
 class RocksStore(object):
-    def __init__(self, name, delete=False):
-        if delete:
-            try:
-                shutil.rmtree(name)
-            except:
-                pass
-
-        # Base folder (try to create it)
-        try:
-            os.mkdir(name)
-        except:
-            pass
-
+    def __init__(self):
         self.dbs = []
 
     def add(self, db):
         self.dbs.append(db)
 
-    def iterate(self, shape, cyclic=True):
+    def split(self, num_samples):
+        splits = [db.split(num_samples) for db in self.dbs]
+        
+        split_a = RocksStore()
+        split_b = RocksStore()
+
+        for db_a, db_b in splits:
+            split_a.add(db_a)
+            split_b.add(db_b)
+
+        return split_a, split_b
+
+
+    def concat(self, other, elements_per_iter_self=1, elements_per_iter_other=1):
+        return RocksConcat([self, other], [elements_per_iter_self, elements_per_iter_other])
+
+    def iterate(self):
+        itrs = [db.iterate() for db in self.dbs]
+
         while True:
-            itrs = [db.iterate() for db in self.dbs()]
-            yield (next(itr) for itr in itrs)
-    
+            yield tuple([next(itr) for itr in itrs])
+
     def close(self):
         for db in self.dbs:
             db.close()
 
+    def close_iterator(self):
+        for db in self.dbs:
+            db.close_iterator()
+
+def types(dtype):
+    if dtype in (np.float32, 'float', 'float32', float):
+        return ctypes.c_float, 4, np.float32, 'float'
+    if dtype in (np.float64, 'float64', 'double'):
+        return ctypes.c_double, 8, np.float64, 'double'
+    elif dtype in (np.uint8, 'uint8'):
+        return ctypes.c_uint8, 1, np.uint8, 'uint8'
+    else:
+        raise Exception("Unkown data type")
 
 class RocksWildcard(object):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         if delete:
             try:
                 shutil.rmtree(name)
             except:
                 pass
             
+        # Try to locate metada file
+        try:
+            # It might be the first run
+            self.iter_shape = None
+
+            with open(os.path.join(name, '.metadata')) as fp:
+                self.metadata = yaml.load(fp)
+
+                # Currently the only supported version
+                if self.metadata['version'] == 1:
+                    max_key_size = self.metadata['max_key_size']
+                    dtype = self.metadata['dtype']
+                    self.iter_shape = self.metadata['shape']
+                else:
+                    raise Exception("Unsupported metada version")
+
+        except (yaml.YAMLError, IOError) as exc:
+            if max_key_size is None:
+                raise Exception("Expected non-None max_key_size")
+
         # Check given type
-        if dtype == np.float32 or dtype == 'float' or dtype == float:
-            self.ctype = ctypes.c_float
-            self.dsize = 4
-            self.dtype = np.float32
-        elif dtype == np.float64 or dtype == 'double':
-            self.ctype = ctypes.c_double
-            self.dsize = 8
-            self.dtype = np.float64
-        elif dtype == np.uint8 or dtype == 'uint8':
-            self.ctype = ctypes.c_uint8
-            self.dsize = 1
-            self.dtype = np.uint8
-        else:
-            raise Exception("Unkown data type")
-            
+        self.ctype, self.dsize, self.dtype, self.typestr = types(dtype)
+        
         # Base folder (try to create it)
         try:
             os.mkdir(name)
         except:
             pass
 
+        # Attributes
+        self.name = name
         self.last_key = 0
         self.max_key_size = max_key_size
+        self.read_only = read_only
+        self.itr = None
+        self.db = None
+        self.skip = skip
+        self.num_samples = num_samples
+
+        # Checkpoint metadata
+        self._save_metadata()
+
+        # Add to opened DBs pool
+        global ROCKS_DB_POOL
+        ROCKS_DB_POOL.append(self)
 
         # If append, get last used key
         if append:
+            raise NotImplementedError("Must be redone")
+
             itr = self.values.iterator()
             itr.last()
             
             key_ptr, key_len = itr.key()
             self.last_key = int((ctypes.c_char * key_len.value).from_address(key_ptr).value)
 
+    def _save_metadata(self):
+        # Save metadata
+        with open(os.path.join(self.name, '.metadata'), 'w') as fp:
+            yaml.dump({
+                'version': 1,
+                'max_key_size': self.max_key_size,
+                'dtype': self.typestr,
+                'shape': self.iter_shape
+            }, fp)
 
-    def put(self, label, data):
+    def get_key(self):
         self.last_key += 1
-        return str(self.last_key).zfill(self.max_key_size)
+        return str(self.last_key).zfill(self.max_key_size).encode()
+
+    def close_iterator(self):
+        if self.itr is not None:
+            self.itr.close()
+            self.itr = None
+
+    def close(self):
+        self.close_iterator()
+
+        if self.db is not None:
+            self.db.close()
+            self.db = None
 
 
+def serialize_numpy(data, dtype):
+    _, dsize, dtype, _ = types(dtype)
+    contiguous = data.astype(dtype).copy(order='C')
+    return contiguous.ctypes.data_as(ctypes.c_char_p), data.size * dsize, contiguous
+
+def unserialize_numpy(data, dtype, shape):
+    _, _, dtype, _ = types(dtype)
+    array_ptr = np.ctypeslib.as_array(data)
+    value = np.ctypeslib.as_array(array_ptr).astype(dtype)
+
+    if shape is None:
+        return value
+    
+    return value.reshape(shape)
 
 class RocksNumpy(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32)
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
-        name = os.path.join(name, 'values.db')
-        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
+        RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size)
+        self.db = RocksDB(name, self.max_key_size, read_only)
 
-    def put(self, label, data):
-        key_str = RocksWildcard.put(self, label, data)
-        contiguous = data.astype(self.dtype).copy(order='C')
-        
-        return self.db.write(ctypes.c_char_p(key_str), contiguous.ctypes.data_as(ctypes.c_char_p), 
-                                   key_len=self.max_key_size, value_len=data.size * self.dsize)
+    def put(self, data):
+        # We need flatten arrays
+        if data.ndim > 1:
+            # Save shape and flatten
+            shape = data.shape
+            data = data.ravel()
 
+            # Not saved yet
+            if self.iter_shape is None:
+                self.iter_shape = shape
+                self._save_metadata()
+            # Check consistency
+            else:
+                if self.iter_shape != shape:
+                    raise Exception("Expected constant shape")
+        else:
+            if self.iter_shape is not None:
+                if np.prod(self.iter_shape) != np.prod(data.shape):
+                    raise Exception("Expected constant shape")
 
-    def iterate(self, shape, cyclic=True):
-        itr = self.db.iterator()
-        size = np.prod(shape)
+        key_str = RocksWildcard.get_key(self)
+        data, value_len, c = serialize_numpy(data, self.dtype)        
+        return self.db.write(ctypes.c_char_p(key_str), data, key_len=self.max_key_size, value_len=value_len)
 
-        while True:
-            while itr.valid():
-                ptr, plen = itr.value()
-                array_ptr = np.ctypeslib.as_array((self.ctype * size).from_address(ptr))
-                value = np.ctypeslib.as_array(array_ptr)
-                yield value.reshape(shape).astype(self.dtype)
+    def iterate(self):
+        self.itr = itr = self.db.iterator()
 
-                itr.next()
+        if self.skip is not None:
+            for i in range(self.skip): itr.next()
 
-            itr.first()
+        i = 0
+        while self.itr is not None and itr.valid():
+            ptr, plen = itr.value()
+            value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr), self.dtype, self.iter_shape)
+            yield value
 
-            if not cyclic:
+            i += 1
+            if self.num_samples is not None and i >= self.num_samples:
                 break
 
+            itr.next()
+
         itr.close()
-        raise Exception("Iterator closed")
+        self.itr = None
 
-    def close(self):
-        self.db.close()
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
 
-class RocksString(RocksWildcard):
-    def __init__(self, name, max_key_size, append=False, delete=False, dtype=np.float32)
+        split_a = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
+        return split_a, split_b
+
+
+class RocksBytes(RocksWildcard):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
         # Initialize parent
-        name = os.path.join(name, 'labels.db')
-        RocksWildcard.__init__(self, name, max_key_size, append, delete, dtype)
+        RocksWildcard.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
         # Open sub-databases
-        self.db = RocksDB(name, max_key_size)
+        self.db = RocksDB(name, self.max_key_size, read_only)
 
     
-    def put(self, label, data):
-        key_str = RocksWildcard.put(self, label, data)
-        label = str(label)
-        return self.labels.write(ctypes.c_char_p(key_str), ctypes.c_char_p(label), key_len=self.max_key_size,
-                                    value_len=len(label))
+    def put(self, data, value_len=None):
+        return self.put_ptr(ctypes.c_char_p(data), value_len or len(data))
+
+    def put_ptr(self, ptr, value_len):
+        key_str = RocksWildcard.get_key(self)
+        return self.db.write(ctypes.c_char_p(key_str), ptr, key_len=self.max_key_size, value_len=value_len)
     
-    def iterate(self, _, cyclic=True):
-        itr = self.db.iterator()
+    def iterate(self):
+        self.itr = itr = self.db.iterator()
 
-        while True:
-            while itr.valid():
-                ptr, plen = itr.value()
-                label = (ctypes.c_char * label_len.value).from_address(ptr)
-                yield str(label.value)
+        if self.skip is not None:
+            for i in range(self.skip): itr.next()
 
-                itr.next()
+        i = 0
+        while itr.valid():
+            ptr, plen = itr.value()
+            label = (ctypes.c_char * plen).from_address(ptr)
+            yield label.raw
 
-            itr.first()
-
-            if not cyclic:
+            i += 1
+            if self.num_samples is not None and i >= self.num_samples:
                 break
+            
+            itr.next()
 
         itr.close()
-        raise Exception("Iterator closed")
+        self.itr = None
+
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
+
+        split_a = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksBytes(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
+        return split_a, split_b
+
+
+class RocksString(RocksBytes):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+        RocksBytes.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
     
-    def close(self):
-        self.db.close()
-        
-        
+    def put(self, data):
+        return RocksBytes.put(self, data.encode())
+
+    def iterate(self):
+        for value in RocksBytes.iterate(self):
+            yield value.decode()
+
+    def split(self, num_samples):
+        assert self.read_only, "Database must be in read only mode"
+
+        split_a = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
+        split_b = RocksString(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
+        return split_a, split_b
+
+
 class RocksIterator(object):
     def __init__(self, itr):
         self.itr = itr
@@ -188,18 +355,30 @@ class RocksIterator(object):
         
     def key(self):
         rlen = ctypes.c_size_t()
-        return RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen)), rlen
+        ptr = RocksDLL.get().rocksdb_iter_key(self.itr, ctypes.pointer(rlen))
+        key = (ctypes.c_char * rlen.value).from_address(ptr)
+        return key.raw.decode(), rlen.value
         
     def value(self):
         rlen = ctypes.c_size_t()
-        return RocksDLL.get().rocksdb_iter_value(self.itr, ctypes.pointer(rlen)), rlen
+        return RocksDLL.get().rocksdb_iter_value(self.itr, ctypes.pointer(rlen)), rlen.value
         
+    def seek(self, key):
+        key_ptr = ctypes.c_char_p(key.encode())
+        RocksDLL.get().rocksdb_iter_seek(self.itr, key_ptr, len(key))
+
+    def status(self):
+        status = ctypes.c_char_p()
+        status_ptr = ctypes.pointer(status)
+        RocksDLL.get().rocksdb_iter_get_error(self.itr, status_ptr)
+        return status.value
+
     def close(self):
         RocksDLL.get().rocksdb_iter_destroy(self.itr)
        
     
 class RocksDB(object):    
-    def __init__(self, name, max_key_size):
+    def __init__(self, name, max_key_size, read_only):
         dll = RocksDLL.get()
         
         #Options
@@ -212,8 +391,8 @@ class RocksDB(object):
         slice_transform = dll.rocksdb_slicetransform_create_fixed_prefix(max_key_size)
         dll.rocksdb_options_set_prefix_extractor(opts, slice_transform)
         
-#         policy = RocksDB.rocksdb.rocksdb_filterpolicy_create_bloom(10);
-#         RocksDB.rocksdb.rocksdb_options_set_filter_policy(opts, policy);
+        # policy = dll.rocksdb_filterpolicy_create_bloom(10);
+        # dll.rocksdb_options_set_filter_policy(opts, policy);
         dll.rocksdb_options_set_plain_table_factory(opts, max_key_size, 10, 0.75, 16)
     
         # Disable compression
@@ -233,7 +412,10 @@ class RocksDB(object):
         # Create
         self.db_err = ctypes.c_char_p()
         self.db_err_ptr = ctypes.pointer(self.db_err)
-        self.db = dll.rocksdb_open(opts, name, self.db_err_ptr)
+        if read_only:
+            self.db = dll.rocksdb_open_for_read_only(opts, name.encode(), 0, self.db_err_ptr)
+        else:
+            self.db = dll.rocksdb_open(opts, name.encode(), self.db_err_ptr)
         self.check_error()
         
         # Create read/write opts
@@ -260,7 +442,7 @@ class RocksDB(object):
         if key_len == 0: key_len = len(key)
         
         rlen = ctypes.c_size_t()
-        ptr = RocksDLL.get().rocksdb_get(self.db, self.read_opts, key, key_len, ctypes.byref(rlen), self.db_err_ptr);
+        ptr = RocksDLL.get().rocksdb_get(self.db, self.read_opts, key.encode(), key_len, ctypes.pointer(rlen), self.db_err_ptr);
         self.check_error()
     
         return ptr, rlen
@@ -316,8 +498,12 @@ class RocksDLL(object):
             dll.rocksdb_open.restype = ctypes.c_void_p
             dll.rocksdb_open.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p)]
 
+            dll.rocksdb_open_for_read_only.restype = ctypes.c_void_p
+            dll.rocksdb_open_for_read_only.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8, ctypes.POINTER(ctypes.c_char_p)]
+
             dll.rocksdb_readoptions_create.restype = ctypes.c_void_p
             dll.rocksdb_writeoptions_create.restype = ctypes.c_void_p
+            dll.rocksdb_readoptions_set_total_order_seek.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
 
             dll.rocksdb_put.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                                         ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)]
@@ -325,7 +511,7 @@ class RocksDLL(object):
             
             dll.rocksdb_get.restype = ctypes.c_char_p
             dll.rocksdb_get.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
-                                        ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_char_p)]
+                                        ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_char_p)]
             
             dll.rocksdb_create_iterator.restype = ctypes.c_void_p
             dll.rocksdb_create_iterator.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
@@ -342,5 +528,8 @@ class RocksDLL(object):
             dll.rocksdb_iter_value.restype = ctypes.c_void_p
             dll.rocksdb_iter_value.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
             dll.rocksdb_iter_destroy.argtypes = [ctypes.c_void_p]
-            
+            dll.rocksdb_iter_seek.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+            dll.rocksdb_iter_get_error.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_char_p)]
+
         return RocksDLL.rocksdll
+
