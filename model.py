@@ -1,12 +1,12 @@
 from .config import bar
 from . import tfhooks
+from .internals import Thread
 
 import types
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 import numpy as np
 from queue import Queue
-from threading import Thread
 from types import SimpleNamespace
 import shutil
 import argparse
@@ -244,17 +244,20 @@ class Model(object):
         return self
 
     def __exit__(self, type, value, tb):
-        for fnc in self.__clean:
-            fnc()
+        self.clean()
         Model.current = None       
 
     def data(self, data_parser):
         self.__data_parser = data_parser
         return self
 
-    def clean(self, what):
+    def clean_fnc(self, what):
         assert callable(what), "Argument should be callable"
         self.__clean.append(what)
+
+    def clean(self):
+        for fnc in self.__clean:
+            fnc()
 
     def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
@@ -419,6 +422,56 @@ class Model(object):
     def generator_from_eval(self, interpreter, tensors):
         generatorSetup = GeneratorFromEval(self, interpreter, tensors)
         return generatorSetup.generator
+
+
+class ExecutionWrapper(object):
+    def __init__(self, model, thread):
+        self.model = model
+        self.thread = thread
+
+    # Expose some functions
+    def terminate(self):
+        if self.isAlive():
+            self.thread.terminate()
+            self.thread.join()
+            self.model.clean()
+            return True
+
+        return False
+
+    def isAlive(self):
+        return self.thread.isAlive()
+
+class AsyncModel(object):
+    def __init__(self, *args, **kwargs):
+        self.model = Model(*args, **kwargs)
+
+    def wrap(self, fnc, *args, **kwargs):
+        t = Thread(target=fnc, args=args, kwargs=kwargs)
+        t.start()
+        return ExecutionWrapper(self.mode, t)
+
+    def __getattribute__(self, name):
+        try:
+            attr = object.__getattribute__(self, name)
+            return attr
+        except:
+            pass
+        
+        attr = Model.__getattribute__(model, name)
+        if name in ('train', 'test', 'evaluate'):
+            return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
+
+        return attr
+
+    def __enter__(self):
+        Model.current = self.model
+        return self
+
+    def __exit__(self, type, value, tb):
+        # Do not clean now, it could (potentially) blow up everything
+        # self.model.clean()
+        Model.current = None    
 
 
 class GeneratorFromEval(object):
