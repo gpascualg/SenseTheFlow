@@ -449,7 +449,7 @@ class AsyncModel(object):
     def wrap(self, fnc, *args, **kwargs):
         t = Thread(target=fnc, args=args, kwargs=kwargs)
         t.start()
-        return ExecutionWrapper(self.mode, t)
+        return ExecutionWrapper(self.model, t)
 
     def __getattribute__(self, name):
         try:
@@ -458,7 +458,7 @@ class AsyncModel(object):
         except:
             pass
         
-        attr = Model.__getattribute__(model, name)
+        attr = Model.__getattribute__(self.model, name)
         if name in ('train', 'test', 'evaluate'):
             return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
 
