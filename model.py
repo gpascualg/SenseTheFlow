@@ -539,7 +539,8 @@ class AsyncModel(object):
     def __exit__(self, type, value, tb):
         # Do not clean now, it could (potentially) blow up everything
         # self.model.clean()
-        # Model.current = None    
+        # Model.current = None
+        pass
 
 
 class GeneratorFromEval(object):
