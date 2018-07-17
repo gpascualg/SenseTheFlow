@@ -459,14 +459,21 @@ class Model(object):
             if not output_node_names:
                 print("You need to supply a list with one or more names of nodes to output_node_names. Either of")
                 for op in tf.get_default_graph().get_operations(): 
-                    print (op.name())
+                    try:
+                        scope = op.name.split('/')[0]
+                        if any(x in scope for x in ('gradients', 'report_uninitialized_variables', 'cond', 'metrics', 'WNAdam', 'save')):
+                            continue
+                    except:
+                        pass
+                    
+                    print (op.name)
                 return False
 
             # We use a built-in TF helper to export variables to constants
             output_graph_def = tf.graph_util.convert_variables_to_constants(
                 sess, # The session is used to retrieve the weights
                 tf.get_default_graph().as_graph_def(), # The graph_def is used to retrieve the nodes 
-                output_node_names.split(",") # The output node names are used to select the usefull nodes
+                output_node_names # The output node names are used to select the usefull nodes
             ) 
 
             # Finally we serialize and dump the output graph to the filesystem
