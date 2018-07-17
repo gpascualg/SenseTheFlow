@@ -259,10 +259,10 @@ class Model(object):
         for fnc in self.__clean:
             fnc()
 
-    def redraw_bars(self):
-        self.__epoch_bar = bar(total=epochs)
+    def redraw_bars(self, epochs=None, leave=True):
+        self.__epoch_bar = bar(total=epochs, leave=leave)
         self.__epoch_bar.update(self.__epoch)
-        self.__step_bar = bar()
+        self.__step_bar = bar(leave=leave)
 
     def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
@@ -300,7 +300,7 @@ class Model(object):
         assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
 
         self.__epoch = 0
-        self.redraw_bars()
+        self.redraw_bars(epochs)
         self.__callbacks += [tfhooks.TqdmHook(self)]
 
         if args.debug:
@@ -334,7 +334,7 @@ class Model(object):
                 else:
                     print('You have no `evaluation` dataset')
 
-    def predict(self, epochs, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+    def predict(self, epochs=1, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         total = self.__data_parser.num(tf.estimator.ModeKeys.PREDICT)
 
         for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs)):
@@ -344,16 +344,17 @@ class Model(object):
             else:
                 pred_hooks = []
 
-            self.__step_bar = bar(leave=params.leave_bar(leave_bar))
-            pred_hooks += [tfhooks.TqdmHook(self.__step_bar)]
+            self.__epoch = 0
+            self.redraw_bars(params.epochs(epochs), leave=params.leave_bar(leave_bar))
+            pred_hooks += [tfhooks.TqdmHook(self)]
 
-            if log is not None:
+            if params.log(log) is not None:
                 pred_hooks.append(tf.train.LoggingTensorHook(
                     tensors=params.log(log),
                     every_n_iter=1
                 ))
 
-            if summary is not None:
+            if params.summary(summary) is not None:
                 name = 'pred' if total == 1 else 'pred-{}'.format(k)
                 pred_hooks.append(args.CustomSummarySaverHook(
                     summary_op=params.summary(summary),
@@ -371,7 +372,7 @@ class Model(object):
             # Keep yielding all results
             yield results
 
-    def evaluate(self, epochs, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+    def evaluate(self, epochs=1, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
 
         for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs)):
@@ -381,17 +382,18 @@ class Model(object):
                 eval_hooks = copy.copy(eval_hooks)
             else:
                 eval_hooks = []
-            
-            self.__step_bar = bar(leave=leave_bar)
-            eval_hooks += [tfhooks.TqdmHook(self.__step_bar)]
 
-            if log is not None:
+            self.__epoch = 0
+            self.redraw_bars(params.epochs(epochs), leave=params.leave_bar(leave_bar))
+            eval_hooks += [tfhooks.TqdmHook(self)]
+
+            if params.log(log) is not None:
                 eval_hooks.append(tf.train.LoggingTensorHook(
                     tensors=params.log(log),
                     every_n_iter=1
                 ))
 
-            if summary is not None:
+            if params.summary(summary) is not None:
                 name = 'eval' if total == 1 else 'eval-{}'.format(k)
                 eval_hooks.append(tfhooks.CustomSummarySaverHook(
                     summary_op=params.summary(summary),
@@ -399,7 +401,7 @@ class Model(object):
                     output_dir=os.path.join(self.classifier().model_dir, name)
                 ))
 
-            if eval_callback is not None:
+            if params.eval_callback(eval_callback) is not None:
                 current_eval_callback = params.eval_callback(eval_callback)
                 if isinstance(current_eval_callback, EvalCallback):
                     current_eval_callback.set_model(self)
@@ -409,10 +411,10 @@ class Model(object):
             results = self.classifier().evaluate(
                 input_fn=input_fn,
                 hooks=eval_hooks,
-                checkpoint_path=checkpoint_path
+                checkpoint_path=params.checkpoint_path(checkpoint_path)
             )
 
-            if eval_callback is not None:
+            if params.eval_callback(eval_callback) is not None:
                 current_eval_callback = params.eval_callback(eval_callback)
                 aggregate_callback = current_eval_callback
 
@@ -509,7 +511,7 @@ class ExecutionWrapper(object):
     def isRunning(self):
         return self.thread.isAlive()
 
-    def reattach(self):
+    def attach(self):
         # Right now it is a simply wrapper to redraw, might do something else later on
         self.model.redraw_bars()
 
