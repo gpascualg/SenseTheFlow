@@ -175,7 +175,7 @@ class EvalCallback(tf.train.SessionRunHook):
             self._step_callback(self._model, dict(zip(self.names, run_values.results)), self._k, self._step)
 
 class Model(object):
-    current = None
+    instances = []
     
     def __init__(self, model_fn, model_dir, 
         config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False):
@@ -240,12 +240,12 @@ class Model(object):
         return self.__classifier
 
     def __enter__(self):
-        Model.current = self
+        Model.instances.append(self)
         return self
 
     def __exit__(self, type, value, tb):
         self.clean()
-        Model.current = None       
+        Model.instances.remove(self)
 
     def data(self, data_parser):
         self.__data_parser = data_parser
@@ -258,6 +258,11 @@ class Model(object):
     def clean(self):
         for fnc in self.__clean:
             fnc()
+
+    def redraw_bars(self):
+        self.__epoch_bar = bar(total=epochs)
+        self.__epoch_bar.update(self.__epoch)
+        self.__step_bar = bar()
 
     def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
@@ -294,9 +299,9 @@ class Model(object):
     def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
         assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
 
-        self.__epoch_bar = bar(total=epochs)
-        self.__step_bar = bar()
-        self.__callbacks += [tfhooks.TqdmHook(self.__step_bar)]
+        self.__epoch = 0
+        self.redraw_bars()
+        self.__callbacks += [tfhooks.TqdmHook(self)]
 
         if args.debug:
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
@@ -429,6 +434,13 @@ class ExecutionWrapper(object):
         self.model = model
         self.thread = thread
 
+        # Attach to model instances and clean laters
+        Model.instances.append(self)
+        self.model.clean_fnc(lambda: Model.instances.remove(self))
+
+        # Start running now
+        self.thread.start()
+
     # Expose some functions
     def terminate(self):
         if self.isAlive():
@@ -439,16 +451,23 @@ class ExecutionWrapper(object):
 
         return False
 
-    def isAlive(self):
+    def isRunning(self):
         return self.thread.isAlive()
+
+    def reattach(self):
+        # Right now it is a simply wrapper to redraw, might do something else later on
+        self.model.redraw_bars()
 
 class AsyncModel(object):
     def __init__(self, *args, **kwargs):
         self.model = Model(*args, **kwargs)
 
     def wrap(self, fnc, *args, **kwargs):
-        t = Thread(target=fnc, args=args, kwargs=kwargs)
-        t.start()
+        def inner_wrap(model, fnc, *args, **kwargs):
+            fnc(*args, **kwargs)
+            model.clean()
+
+        t = Thread(target=inner_wrap, args=(self.model, fnc,) + args, kwargs=kwargs)
         return ExecutionWrapper(self.model, t)
 
     def __getattribute__(self, name):
@@ -465,13 +484,14 @@ class AsyncModel(object):
         return attr
 
     def __enter__(self):
-        Model.current = self.model
+        # Do not add now, we might end up running nothing
+        # Model.instances.append(self.model)
         return self
 
     def __exit__(self, type, value, tb):
         # Do not clean now, it could (potentially) blow up everything
         # self.model.clean()
-        Model.current = None    
+        # Model.current = None    
 
 
 class GeneratorFromEval(object):

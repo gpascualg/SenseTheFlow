@@ -2,8 +2,8 @@ import tensorflow as tf
 
 
 class TqdmHook(tf.train.SessionRunHook):
-    def __init__(self, bar):
-        self._bar = bar
+    def __init__(self, model):
+        self._model = model
         self._last_step = 0
 
     def begin(self):
@@ -23,6 +23,7 @@ class TqdmHook(tf.train.SessionRunHook):
         update = global_step - self._last_step
         self._last_step = global_step
 
-        self._bar.update(update)
-        self._bar.set_description('Loss: {}'.format(loss))
+        _, bar = self._model.bar()
+        bar.update(update)
+        bar.set_description('Loss: {}'.format(loss))
    
