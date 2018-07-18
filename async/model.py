@@ -7,7 +7,7 @@ import tensorflow as tf
 import os
 
 
-class Model(object):
+class Model(SyncModel):
     def __init__(self, *args, **kwargs):
         self.__model = SyncModel(*args, **kwargs)
         self.__async_task = AsyncTaskHook(1, self.__model)
@@ -25,15 +25,15 @@ class Model(object):
 
     def __getattribute__(self, name):
         try:
-            attr = object.__getattribute__(self, name)
+            attr = SyncModel.__getattribute__(self.__model, name)
+            if name in ('train', 'test', 'evaluate'):
+                return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
+
             return attr
         except:
             pass
-        
-        attr = SyncModel.__getattribute__(self.__model, name)
-        if name in ('train', 'test', 'evaluate'):
-            return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
 
+        attr = object.__getattribute__(self, name)
         return attr
 
     def __enter__(self):
