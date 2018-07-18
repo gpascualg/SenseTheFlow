@@ -207,12 +207,15 @@ class Model(object):
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
             warm_start_from=warm_start_from, params=params)
+
+    def _add_hook(self, hook):
+        self.__callbacks.append(hook)
         
     def add_callback(self, steps, func):
         assert type(func) == types.FunctionType, "Expected a function in func"
         assert len(signature(func).parameters) == 2, "Expected func to have 2 parameters (model, step)"
         
-        self.__callbacks.append(tfhooks.CallbackHook(steps, func, self))
+        self._add_hook(tfhooks.CallbackHook(steps, func, self))
 
     # Getters
     def epoch(self):
@@ -255,7 +258,7 @@ class Model(object):
             if callback is not None:
                 callback(results)
 
-        self.__callbacks.append(tf.train.CheckpointSaverHook(
+        self._add_hook(tf.train.CheckpointSaverHook(
             checkpoint_dir=self.classifier().model_dir,
             save_steps=steps
         ))

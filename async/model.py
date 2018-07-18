@@ -1,11 +1,18 @@
 from ..model import Model as SyncModel
 from .execution_wrapper import ExecutionWrapper
+from .tfhooks import AsyncTaskMode, AsyncTaskHook, create_async_task
 from .internals import Thread
+
+import tensorflow as tf
 
 
 class Model(object):
     def __init__(self, *args, **kwargs):
         self.model = SyncModel(*args, **kwargs)
+        self.async_task = AsyncTaskHook(1, self.model)
+
+        # Inject the hook
+        self.model._add_hook(self.async_task)
 
     def wrap(self, fnc, *args, **kwargs):
         def inner_wrap(model, fnc, *args, **kwargs):
@@ -38,3 +45,29 @@ class Model(object):
         # self.model.clean()
         # SyncModel.current = None
         pass
+
+    def __save_callback(self, model, session, step):
+        # @tf.CheckpointSaverHook
+        # Get saver from the SAVERS collection if present.
+        collection_key = tf.GraphKeys.SAVERS
+        savers = tf.get_collection(collection_key)
+        if not savers:
+            raise RuntimeError(
+                "No items in collection {}. Please add a saver to the collection "
+                "or provide a saver or scaffold.".format(collection_key))
+                
+        elif len(savers) > 1:
+            raise RuntimeError(
+                "More than one item in collection {}. "
+                "Please indicate which one to use by passing it to the constructor.".
+                format(collection_key))
+
+        saver = savers[0]
+        saver.save(session, self.model.classifier().model_dir, global_step=step)
+
+    def save(self, block=True):
+        task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN)
+        self.async_task.push(task)
+
+        if block:
+            task.semaphore.acquire()
