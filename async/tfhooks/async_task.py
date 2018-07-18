@@ -49,10 +49,11 @@ class AsyncTaskHook(tf.train.SessionRunHook):
     def _execute(self, mode, session):
         # Move repetitive into lists (for faster iteration)
         # Execute non-reptitive
-        # Iterate until `queue.get` returns None
+        # Iterate until `queue.get` throws
         while True:
-            task = self._queue[mode].get(False)
-            if task is None:
+            try:
+                task = self._queue[mode].get(False)
+            except:
                 break
 
             if task.repetitive:
