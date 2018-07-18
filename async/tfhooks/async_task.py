@@ -14,7 +14,7 @@ class AsyncTaskMode(enum.Enum):
 
 
 def create_async_task(callback, mode, steps=1, repetitive=False):
-    assert isinstance(callback, callable)
+    assert callable(callback)
     assert isinstance(mode, AsyncTaskMode)
     assert isinstance(steps, int)
 
