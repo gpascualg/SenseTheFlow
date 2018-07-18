@@ -20,7 +20,7 @@ class Model(object):
             model.clean()
 
         t = Thread(target=inner_wrap, args=(self.__model, fnc,) + args, kwargs=kwargs)
-        return ExecutionWrapper(self.__model, t)
+        return ExecutionWrapper(self, t)
 
     def __getattribute__(self, name):
         try:
