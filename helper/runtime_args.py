@@ -7,7 +7,7 @@ def get_arguments():
     # Adding argparse inside a Jupyter notebook blows the whole
     # environment up (either case, we can not debug inside Jupyter)
     try:
-        get_ipython()
+        get_ipython
         args = SimpleNamespace(debug=False)
     except:
         parser = argparse.ArgumentParser()

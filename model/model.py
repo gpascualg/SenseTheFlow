@@ -1,163 +1,24 @@
-from . import tfhooks
-from .config import bar
-from .helper import DefaultNamespace, get_arguments
-
-from tensorflow.python import debug as tf_debug
-from queue import Queue
-
-import tensorflow as tf
-import numpy as np
+import os
 import types
 import shutil
-import argparse
-import os
 import copy
+import tensorflow as tf
+from inspect import signature
+from tensorflow.python import debug as tf_debug
 
-try:
-    from inspect import signature
-except:
-    from funcsigs import signature
-
-
-
-# Parse arguments now, if any
-cmd_args = get_arguments()
+from . import tfhooks
+from ..config import bar
+from ..helper import DefaultNamespace, cmd_args
 
 
-class DataParser(object):
-    def __init__(self):
-        self.__input_fn = dict([
-            (tf.estimator.ModeKeys.TRAIN, []),
-            (tf.estimator.ModeKeys.PREDICT, []),
-            (tf.estimator.ModeKeys.EVAL, [])
-        ])
+def rmtree(path):
+    # Shutil in Jupyter causes unexpected behaviour (tensorboard won't recognize new model)
+    try:
+        get_ipython().magic('rm -rf {}  &>/dev/null'.format(path))
+    except:
+        try: shutil.rmtree(path)
+        except: pass
 
-    def has(self, mode):
-        return bool(self.__input_fn[mode])
-
-    def num(self, mode):
-        return len(self.__input_fn[mode])
-
-    def from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
-        pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1,
-        mode=tf.estimator.ModeKeys.TRAIN, **kwargs):
-
-        generator = {
-            'generator': generator, 
-            'output_types': output_types,
-            'output_shapes': output_shapes
-        }
-
-        input_fn = lambda num_epochs: self.generator_input_fn(
-            generator,  parser_fn=parser_fn,
-            pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
-            skip=skip, num_samples=num_samples, batch_size=batch_size,
-            mode=mode, num_epochs=num_epochs
-        )
-
-        self.__input_fn[mode].append((input_fn, DefaultNamespace(**kwargs)))
-        
-        return self
-
-    def train_from_generator(self, *args, **kwargs):
-        self.from_generator(*args, mode=tf.estimator.ModeKeys.TRAIN, **kwargs)
-        return self
-    
-    def eval_from_generator(self, *args, **kwargs):
-        self.from_generator(*args, mode=tf.estimator.ModeKeys.EVAL, **kwargs)
-        return self
-        
-    def predict_from_generator(self, *args, **kwargs):
-        self.from_generator(*args, mode=tf.estimator.ModeKeys.PREDICT, **kwargs)
-        return self
-
-    def generator_input_fn(self, generator, mode, parser_fn=None,
-        pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1, num_epochs=1):
-
-        dataset = tf.data.Dataset.from_generator(**generator)
-
-        # Pre-parsing shuffle
-        if pre_shuffle:
-            dataset = dataset.shuffle(buffer_size=pre_shuffle)
-
-        if skip is not None:
-            dataset = dataset.skip(skip)
-
-        # No need to parse anything?
-        if parser_fn is not None:
-            dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
-
-        if flatten:
-            dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
-
-        if batch_size > 0:
-            dataset = dataset.prefetch(batch_size)
-
-        # Post-parsing
-        if post_shuffle:
-            dataset = dataset.shuffle(buffer_size=post_shuffle)
-
-        if num_samples is not None:
-            dataset = dataset.take(num_samples)
-
-        dataset = dataset.repeat(num_epochs)
-        if batch_size > 0:
-            dataset = dataset.batch(batch_size)
-            
-        iterator = dataset.make_one_shot_iterator()
-
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            features = iterator.get_next()
-            return features
-        
-        features, labels = iterator.get_next()
-        return features, labels
-
-    def input_fn(self, mode, num_epochs):
-        assert bool(self.__input_fn[mode])
-        for input_fn, args in self.__input_fn[mode]:
-            yield (lambda: input_fn(num_epochs), args)
-
-class EvalCallback(tf.train.SessionRunHook):
-    def __init__(self, aggregate_callback=None, step_callback=None, fetch_tensors=None):
-        self._aggregate_callback = aggregate_callback
-        self._step_callback = step_callback
-        self._fetch_tensors = fetch_tensors
-        self._model = None
-        self._step = 0
-        self._k = 0
-
-        self.tensors = ()
-        self.names = ()
-
-    def set_model(self, model):
-        self._model = model
-
-    def set_k(self, k):
-        self._k = k
-
-    def aggregate_callback(self, model, k, results):
-        if self._aggregate_callback is not None:
-            self._aggregate_callback(model, k, results)
-
-    def begin(self):
-        pass
-
-    def after_create_session(self, session, coord):
-        graph = tf.get_default_graph()
-        tensors = [(graph.get_tensor_by_name(name + ":0"), name) for name in self._fetch_tensors]
-        self.tensors, self.names = zip(*tensors)
-
-    def before_run(self, run_context):
-        if self._fetch_tensors is not None:
-            return tf.train.SessionRunArgs(self.tensors)
-
-    def after_run(self, run_context, run_values):
-        if self._step_callback is not None:
-            self._step += 1
-            self._step_callback(self._model, dict(zip(self.names, run_values.results)), self._k, self._step)
 
 class Model(object):
     instances = []
@@ -190,10 +51,14 @@ class Model(object):
         run_config = run_config \
             .replace(session_config=self.__config)
 
+        # Output some information
+        print('Target model directory: {}'.format(model_dir))
+
         if delete_existing:
             delete_now = (delete_existing == 'force')
 
             if not delete_now:
+                # Keep asking until answer is valid
                 done = False
                 while not done:
                     res = input('Do you really want to delete all models? [yes/no]: ').lower()
@@ -201,8 +66,7 @@ class Model(object):
                     delete_now = (res in ('y', 'yes'))
 
             if delete_now:
-                try: shutil.rmtree(model_dir)
-                except: pass
+                rmtree(model_dir)
 
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
@@ -391,7 +255,7 @@ class Model(object):
 
             if params.eval_callback(eval_callback) is not None:
                 current_eval_callback = params.eval_callback(eval_callback)
-                if isinstance(current_eval_callback, EvalCallback):
+                if isinstance(current_eval_callback, tfhooks.EvalCallbackHook):
                     current_eval_callback.set_model(self)
                     current_eval_callback.set_k(k)
                     eval_hooks += [current_eval_callback]
@@ -406,18 +270,13 @@ class Model(object):
                 current_eval_callback = params.eval_callback(eval_callback)
                 aggregate_callback = current_eval_callback
 
-                if isinstance(current_eval_callback, EvalCallback):
+                if isinstance(current_eval_callback, tfhooks.EvalCallbackHook):
                    aggregate_callback = eval_callback.aggregate_callback
                     
                 aggregate_callback(self, k, results)
 
             # Keep yielding all results
             yield results
-
-    def generator_from_eval(self, interpreter, tensors):
-        generatorSetup = GeneratorFromEval(self, interpreter, tensors)
-        return generatorSetup.generator
-
 
     # @https://blog.metaflow.fr/tensorflow-how-to-freeze-a-model-and-serve-it-with-a-python-api-d4f3596b3adc
     def freeze(self, output_node_names, frozen_model_name='frozen_model.pb'):
@@ -472,36 +331,3 @@ class Model(object):
             print("%d ops in the final graph." % len(output_graph_def.node))
 
         return output_graph_def
-
-
-class GeneratorFromEval(object):
-    def __init__(self, model, interpreter, tensors):
-        self.__eval_callback = EvalCallback(
-            step_callback=self._step,
-            aggregate_callback=self._done,
-            fetch_tensors=tensors
-        )
-        self.__model = model
-        self.__interpreter = interpreter
-        self.__queue = Queue()
-
-        # Launch
-        self.__thread = Thread(target=self._run)
-        self.__thread.start()
-
-    def _run(self):
-        self.__model.evaluate(1, eval_callback=self.__eval_callback)
-
-    def _step(self, model, results):
-        result = self.__interpreter(model, results)
-        self.__queue.put(result)
-
-    def _done(self, mode, results):
-        self.__queue.put(None)
-
-    def generator(self):
-        while True:
-            data = self.__queue.get()
-            if data is None:
-                raise StopIteration
-            yield data
