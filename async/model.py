@@ -4,6 +4,7 @@ from .tfhooks import AsyncTaskMode, AsyncTaskHook, create_async_task
 from .internals import Thread
 
 import tensorflow as tf
+import os
 
 
 class Model(object):
@@ -63,7 +64,7 @@ class Model(object):
                 format(collection_key))
 
         saver = savers[0]
-        saver.save(session, self.__model.classifier().model_dir, global_step=step)
+        saver.save(session, os.path.join(self.__model.classifier().model_dir, 'model.ckpt'), global_step=step)
 
     def save(self, block=True):
         task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN)
