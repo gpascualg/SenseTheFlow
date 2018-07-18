@@ -1,5 +1,3 @@
-from ..model import Model as AsyncModel
-
 import tensorflow as tf
 import enum
 import heapq

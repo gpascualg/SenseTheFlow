@@ -8,19 +8,19 @@ import tensorflow as tf
 
 class Model(object):
     def __init__(self, *args, **kwargs):
-        self.model = SyncModel(*args, **kwargs)
-        self.async_task = AsyncTaskHook(1, self.model)
+        self.__model = SyncModel(*args, **kwargs)
+        self.__async_task = AsyncTaskHook(1, self.__model)
 
         # Inject the hook
-        self.model._add_hook(self.async_task)
+        self.__model._add_hook(self.__async_task)
 
     def wrap(self, fnc, *args, **kwargs):
         def inner_wrap(model, fnc, *args, **kwargs):
             fnc(*args, **kwargs)
             model.clean()
 
-        t = Thread(target=inner_wrap, args=(self.model, fnc,) + args, kwargs=kwargs)
-        return ExecutionWrapper(self.model, t)
+        t = Thread(target=inner_wrap, args=(self.__model, fnc,) + args, kwargs=kwargs)
+        return ExecutionWrapper(self.__model, t)
 
     def __getattribute__(self, name):
         try:
@@ -29,7 +29,7 @@ class Model(object):
         except:
             pass
         
-        attr = SyncModel.__getattribute__(self.model, name)
+        attr = SyncModel.__getattribute__(self.__model, name)
         if name in ('train', 'test', 'evaluate'):
             return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
 
@@ -37,12 +37,12 @@ class Model(object):
 
     def __enter__(self):
         # Do not add now, we might end up running nothing
-        # SyncModel.instances.append(self.model)
+        # SyncModel.instances.append(self.__model)
         return self
 
     def __exit__(self, type, value, tb):
         # Do not clean now, it could (potentially) blow up everything
-        # self.model.clean()
+        # self.__model.clean()
         # SyncModel.current = None
         pass
 
@@ -63,11 +63,11 @@ class Model(object):
                 format(collection_key))
 
         saver = savers[0]
-        saver.save(session, self.model.classifier().model_dir, global_step=step)
+        saver.save(session, self.__model.classifier().model_dir, global_step=step)
 
     def save(self, block=True):
         task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN)
-        self.async_task.push(task)
+        self.__async_task.push(task)
 
         if block:
             task.semaphore.acquire()
