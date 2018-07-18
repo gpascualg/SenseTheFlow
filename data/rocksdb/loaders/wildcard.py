@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 
 from ..helper import ROCKS_DB_POOL, types
+from ..groups import store
 
 
 class RocksWildcard(object):
@@ -95,3 +96,16 @@ class RocksWildcard(object):
         if self.db is not None:
             self.db.close()
             self.db = None
+
+    def __add__(self, other):
+        if isinstance(other, RocksWildcard):
+            store = RocksStore()
+            store.add(self)
+            store.add(other)
+            return store
+        
+        if isinstance(other, store.RocksStore):
+            other.insert(0, self)
+            return other
+
+        raise RuntimeError("Unexpected input")
