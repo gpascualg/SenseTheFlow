@@ -9,14 +9,13 @@ import yaml
 # Note: This will only work if running in a custom jupyter
 #  environment that sends SIGTERM before restarting kernels,
 #  otherwise jupyter sends SIGKILL directly, which is not
-#  handlable
-# Will also work on vanilla python environments (coda included)
+#  handable
+# Will also work on vanilla python environments (conda included)
 import signal
 
 ROCKS_DB_POOL = []
 
 def signal_handler(signal, frame):
-    global ROCKS_DB_POOL
     for db in ROCKS_DB_POOL:
         db.close()
 

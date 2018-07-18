@@ -1,13 +1,13 @@
-from .config import bar
 from . import tfhooks
-from .internals import Thread
+from .config import bar
+from .helper import DefaultNamespace, get_arguments
 
-import types
-import tensorflow as tf
 from tensorflow.python import debug as tf_debug
-import numpy as np
 from queue import Queue
-from types import SimpleNamespace
+
+import tensorflow as tf
+import numpy as np
+import types
 import shutil
 import argparse
 import os
@@ -19,24 +19,9 @@ except:
     from funcsigs import signature
 
 
-# Load some arguments from console
-try:
-    get_ipython()
-    args = SimpleNamespace(debug=False)
-except:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', default=False, action='store_true')
-    args = parser.parse_args()
 
-
-# convenience class to access non-existing members
-class DefaultNamespace(SimpleNamespace):
-    def __getattribute__(self, name):
-        try:
-            val = SimpleNamespace.__getattribute__(self, name)
-            return lambda _: val
-        except:
-            return lambda d = None: d
+# Parse arguments now, if any
+cmd_args = get_arguments()
 
 
 class DataParser(object):
@@ -303,7 +288,7 @@ class Model(object):
         self.redraw_bars(epochs)
         self.__callbacks += [tfhooks.TqdmHook(self)]
 
-        if args.debug:
+        if cmd_args.debug:
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
         train_epochs = epochs_per_eval or 1
@@ -356,7 +341,7 @@ class Model(object):
 
             if params.summary(summary) is not None:
                 name = 'pred' if total == 1 else 'pred-{}'.format(k)
-                pred_hooks.append(args.CustomSummarySaverHook(
+                pred_hooks.append(tfhooks.CustomSummarySaverHook(
                     summary_op=params.summary(summary),
                     save_steps=1,
                     output_dir=os.path.join(self.classifier().model_dir, name)
@@ -484,72 +469,6 @@ class Model(object):
             print("%d ops in the final graph." % len(output_graph_def.node))
 
         return output_graph_def
-
-
-class ExecutionWrapper(object):
-    def __init__(self, model, thread):
-        self.model = model
-        self.thread = thread
-
-        # Attach to model instances and clean laters
-        Model.instances.append(self)
-        self.model.clean_fnc(lambda: Model.instances.remove(self))
-
-        # Start running now
-        self.thread.start()
-
-    # Expose some functions
-    def terminate(self):
-        if self.isAlive():
-            self.thread.terminate()
-            self.thread.join()
-            self.model.clean()
-            return True
-
-        return False
-
-    def isRunning(self):
-        return self.thread.isAlive()
-
-    def attach(self):
-        # Right now it is a simply wrapper to redraw, might do something else later on
-        self.model.redraw_bars()
-
-class AsyncModel(object):
-    def __init__(self, *args, **kwargs):
-        self.model = Model(*args, **kwargs)
-
-    def wrap(self, fnc, *args, **kwargs):
-        def inner_wrap(model, fnc, *args, **kwargs):
-            fnc(*args, **kwargs)
-            model.clean()
-
-        t = Thread(target=inner_wrap, args=(self.model, fnc,) + args, kwargs=kwargs)
-        return ExecutionWrapper(self.model, t)
-
-    def __getattribute__(self, name):
-        try:
-            attr = object.__getattribute__(self, name)
-            return attr
-        except:
-            pass
-        
-        attr = Model.__getattribute__(self.model, name)
-        if name in ('train', 'test', 'evaluate'):
-            return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
-
-        return attr
-
-    def __enter__(self):
-        # Do not add now, we might end up running nothing
-        # Model.instances.append(self.model)
-        return self
-
-    def __exit__(self, type, value, tb):
-        # Do not clean now, it could (potentially) blow up everything
-        # self.model.clean()
-        # Model.current = None
-        pass
 
 
 class GeneratorFromEval(object):
