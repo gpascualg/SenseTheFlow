@@ -65,6 +65,7 @@ class TqdmHook(tf.train.SessionRunHook):
         self._last_step = global_step
 
         if self._forced_update:
+            self._forced_update = False
             update = global_step
 
         bar = self._wrapper.step_bar
