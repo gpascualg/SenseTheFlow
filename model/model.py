@@ -2,6 +2,7 @@ import os
 import types
 import shutil
 import copy
+import tqdm
 import tensorflow as tf
 from inspect import signature
 from tensorflow.python import debug as tf_debug
@@ -14,10 +15,17 @@ from ..helper import DefaultNamespace, cmd_args
 def rmtree(path):
     # Shutil in Jupyter causes unexpected behaviour (tensorboard won't recognize new model)
     try:
-        get_ipython().magic('rm -rf {}  &>/dev/null'.format(path))
+        get_ipython().magic('rm -rf {} &>/dev/null'.format(path))
     except:
         try: shutil.rmtree(path)
         except: pass
+
+def _wrap_generator(generator, wrappers, epochs):
+    for element in generator:
+        yield element
+
+    tqdm_wrapper = wrappers.pop(0)
+    tqdm_wrapper.update_epoch(epochs)
 
 
 class Model(object):
@@ -28,8 +36,7 @@ class Model(object):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
-        self.__config = config        
-        self.__epoch = 0
+        self.__config = config
         self.__init = None
         self.__feed_dict = None
         self.__last_feed_dict = None
@@ -40,6 +47,11 @@ class Model(object):
         
         self.__classifier = None
         self.__callbacks = []
+        self.__tqdm_hooks = {
+            tf.estimator.ModeKeys.TRAIN: [],
+            tf.estimator.ModeKeys.EVAL: [],
+            tf.estimator.ModeKeys.PREDICT: []
+        }
 
         self.__clean = []
 
@@ -82,11 +94,13 @@ class Model(object):
         self._add_hook(tfhooks.CallbackHook(steps, func, self))
 
     # Getters
-    def epoch(self):
-        return self.__epoch
+    def epoch(self, mode=tf.estimator.ModeKeys.TRAIN):
+        assert self.__tqdm_hooks[mode], "No running classifier in mode {}".format(mode)
+        # TODO(gpascualg): -1 might not be the one running now
+        return self.__tqdm_hooks[mode][-1].epoch
     
-    def bar(self):
-        return self.__epoch_bar, self.__step_bar
+    def bar(self, mode=tf.estimator.ModeKeys.TRAIN):
+        return self.__tqdm_hooks[mode]
     
     def classifier(self):
         return self.__classifier
@@ -112,9 +126,9 @@ class Model(object):
             fnc()
 
     def redraw_bars(self, epochs=None, leave=True):
-        self.__epoch_bar = bar(total=epochs, leave=leave)
-        self.__epoch_bar.update(self.__epoch)
-        self.__step_bar = bar(leave=leave)
+        for mode, wrappers in self.__tqdm_hooks:
+            for wrapper in wrappers:
+                wrapper.draw()
 
     def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
         def hook(model, step, hooks):
@@ -151,16 +165,16 @@ class Model(object):
     def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
         assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
 
-        self.__epoch = 0
-        self.redraw_bars(epochs)
-        self.__callbacks += [tfhooks.TqdmHook(self)]
+        tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
+        self.__tqdm_hooks[tf.estimator.ModeKeys.TRAIN].append(tqdm_wrapper)
+        self.redraw_bars()
 
         if cmd_args.debug:
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
         train_epochs = epochs_per_eval or 1
 
-        for self.__epoch in range(0, epochs, train_epochs):
+        for epoch in range(0, epochs, train_epochs):
             logger = tf.train.LoggingTensorHook(
                 tensors={
                     'global_step/step': 'global_step'
@@ -173,10 +187,11 @@ class Model(object):
             for (input_fn, params) in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
                 self.classifier().train(
                     input_fn=input_fn,
-                    hooks=self.__callbacks + [logger, step_counter]
+                    hooks=self.__callbacks + [tqdm_wrapper.create(), logger, step_counter]
                 )
 
-            self.__epoch_bar.update(train_epochs)
+            # Update epochs
+            tqdm_wrapper.update_epoch(epoch + train_epochs)
 
             # Try to do an eval
             if isinstance(epochs_per_eval, int):
@@ -196,9 +211,10 @@ class Model(object):
             else:
                 pred_hooks = []
 
-            self.__epoch = 0
-            self.redraw_bars(params.epochs(epochs), leave=params.leave_bar(leave_bar))
-            pred_hooks += [tfhooks.TqdmHook(self)]
+            tqdm_wrapper = tfhooks.TqdmWrapper(epochs=params.epochs(epochs), leave=params.leave_bar(leave_bar))
+            self.__tqdm_hooks[tf.estimator.ModeKeys.PREDICT].append(tqdm_wrapper)
+            self.redraw_bars()
+            pred_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
                 pred_hooks.append(tf.train.LoggingTensorHook(
@@ -222,7 +238,8 @@ class Model(object):
             )
 
             # Keep yielding all results
-            yield results
+            yield _wrap_generator(results, self.__tqdm_hooks[tf.estimator.ModeKeys.PREDICT], epochs)
+        
 
     def evaluate(self, epochs=1, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
@@ -235,9 +252,10 @@ class Model(object):
             else:
                 eval_hooks = []
 
-            self.__epoch = 0
-            self.redraw_bars(params.epochs(epochs), leave=params.leave_bar(leave_bar))
-            eval_hooks += [tfhooks.TqdmHook(self)]
+            tqdm_wrapper = tfhooks.TqdmWrapper(epochs=params.epochs(epochs), leave=params.leave_bar(leave_bar))
+            self.__tqdm_hooks[tf.estimator.ModeKeys.EVAL].append(tqdm_wrapper)
+            self.redraw_bars()
+            eval_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
                 eval_hooks.append(tf.train.LoggingTensorHook(
@@ -276,7 +294,7 @@ class Model(object):
                 aggregate_callback(self, k, results)
 
             # Keep yielding all results
-            yield results
+            yield _wrap_generator(results, self.__tqdm_hooks[tf.estimator.ModeKeys.EVAL], epochs)
 
     # @https://blog.metaflow.fr/tensorflow-how-to-freeze-a-model-and-serve-it-with-a-python-api-d4f3596b3adc
     def freeze(self, output_node_names, frozen_model_name='frozen_model.pb'):
