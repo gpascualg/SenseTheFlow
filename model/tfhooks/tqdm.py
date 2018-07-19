@@ -67,7 +67,7 @@ class TqdmHook(tf.train.SessionRunHook):
         if self._forced_update:
             update = global_step
 
-        _, bar = self._wrapper.step_bar
+        bar = self._wrapper.step_bar
         bar.update(update)
         bar.set_description('Loss: {}'.format(loss))
    

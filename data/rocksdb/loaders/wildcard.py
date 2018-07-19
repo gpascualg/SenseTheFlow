@@ -99,10 +99,10 @@ class RocksWildcard(object):
 
     def __add__(self, other):
         if isinstance(other, RocksWildcard):
-            store = RocksStore()
-            store.add(self)
-            store.add(other)
-            return store
+            dataset = store.RocksStore()
+            dataset.add(self)
+            dataset.add(other)
+            return dataset
         
         if isinstance(other, store.RocksStore):
             other.insert(0, self)

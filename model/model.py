@@ -126,7 +126,7 @@ class Model(object):
             fnc()
 
     def redraw_bars(self, epochs=None, leave=True):
-        for mode, wrappers in self.__tqdm_hooks:
+        for mode, wrappers in self.__tqdm_hooks.items():
             for wrapper in wrappers:
                 wrapper.draw()
 
