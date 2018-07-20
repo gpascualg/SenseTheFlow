@@ -20,12 +20,25 @@ def rmtree(path):
         try: shutil.rmtree(path)
         except: pass
 
-def _wrap_generator(generator, wrappers, epochs):
-    for element in generator:
-        yield element
-
+def _wrap_results(results, wrappers, epochs):
+    # If generator, yield all results first (to actually end the process)
+    isGenerator = isinstance(results, types.GeneratorType)
+    if isGenerator:
+        _wrap_generator(results)
+    
+    # If it is generator, we have just ended
+    # Otherwise, results were already the returned value of the process, thus it has ended
+    # Clean tqdm
     tqdm_wrapper = wrappers.pop(0)
     tqdm_wrapper.update_epoch(epochs)
+
+    # Not generator, simply return value
+    if not isGenerator:
+        return results
+
+def _wrap_generator(generator):
+    for element in generator:
+        yield element
 
 
 class Model(object):
@@ -238,7 +251,7 @@ class Model(object):
             )
 
             # Keep yielding all results
-            yield _wrap_generator(results, self.__tqdm_hooks[tf.estimator.ModeKeys.PREDICT], epochs)
+            yield _wrap_results(results, self.__tqdm_hooks[tf.estimator.ModeKeys.PREDICT], params.epochs(epochs))
         
 
     def evaluate(self, epochs=1, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
@@ -294,7 +307,7 @@ class Model(object):
                 aggregate_callback(self, k, results)
 
             # Keep yielding all results
-            yield _wrap_generator(results, self.__tqdm_hooks[tf.estimator.ModeKeys.EVAL], epochs)
+            yield _wrap_results(results, self.__tqdm_hooks[tf.estimator.ModeKeys.EVAL], params.epochs(epochs))
 
     # @https://blog.metaflow.fr/tensorflow-how-to-freeze-a-model-and-serve-it-with-a-python-api-d4f3596b3adc
     def freeze(self, output_node_names, frozen_model_name='frozen_model.pb'):
