@@ -24,21 +24,21 @@ def _wrap_results(results, wrappers, epochs):
     # If generator, yield all results first (to actually end the process)
     isGenerator = isinstance(results, types.GeneratorType)
     if isGenerator:
-        _wrap_generator(results)
+        return _wrap_generator(results, wrappers, epochs)
     
-    # If it is generator, we have just ended
-    # Otherwise, results were already the returned value of the process, thus it has ended
-    # Clean tqdm
+    # Results were already the returned value of the process, thus it has ended
+    # Clean tqdm and return
     tqdm_wrapper = wrappers.pop(0)
     tqdm_wrapper.update_epoch(epochs)
+    return results
 
-    # Not generator, simply return value
-    if not isGenerator:
-        return results
-
-def _wrap_generator(generator):
+def _wrap_generator(generator, wrappers, epochs):
     for element in generator:
         yield element
+
+    # Clean after all yielding has been done
+    tqdm_wrapper = wrappers.pop(0)
+    tqdm_wrapper.update_epoch(epochs)
 
 
 class Model(object):

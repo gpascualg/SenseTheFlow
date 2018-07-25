@@ -4,11 +4,11 @@ from .internals import Thread
 from queue import Queue
 
 
-def __wrap_train(self, model, fnc, queue, callback, *args, **kwargs):
+def _wrap_train(model, fnc, queue, callback, *args, **kwargs):
     fnc(*args, **kwargs)
     model.clean()
 
-def __wrap_iterable(self, model, fnc, queue, callback, *args, **kwargs):
+def _wrap_iterable(model, fnc, queue, callback, *args, **kwargs):
     for generator in fnc(*args, **kwargs):
         for result in generator:
             # Evaluate
@@ -36,7 +36,7 @@ class ExecutionWrapper(object):
         assert not self.isRunning(), "Model is already running"
 
         self.__queue = Queue() if self.__fnc_name == 'evaluate' else None
-        target = __wrap_train if self.__fnc_name == 'train' else __wrap_iterable
+        target = _wrap_train if self.__fnc_name == 'train' else _wrap_iterable
         self.__thread = Thread(target=target, args=(self.model, self.__fnc, self.__queue, callback) + self.__args, kwargs=self.__kwargs)
 
         # Attach to model instances and clean laters
@@ -60,7 +60,7 @@ class ExecutionWrapper(object):
         return False
 
     def isRunning(self):
-        return self.__thread.isAlive()
+        return self.__thread is not None and self.__thread.isAlive()
 
     def wait(self):
         return self.__thread.join()
