@@ -1,7 +1,6 @@
 from ..model import Model as SyncModel
 from .execution_wrapper import ExecutionWrapper
 from .tfhooks import AsyncTaskMode, AsyncTaskHook, create_async_task
-from .internals import Thread
 
 import tensorflow as tf
 import os
@@ -15,19 +14,23 @@ class Model(SyncModel):
         # Inject the hook
         self.__model._add_hook(self.__async_task)
 
-    def wrap(self, fnc, *args, **kwargs):
-        def inner_wrap(model, fnc, *args, **kwargs):
-            fnc(*args, **kwargs)
-            model.clean()
 
-        t = Thread(target=inner_wrap, args=(self.__model, fnc,) + args, kwargs=kwargs)
-        return ExecutionWrapper(self, t)
+    def __wrap(self, fnc_name, fnc, *args, **kwargs):
+        wrapper = ExecutionWrapper(self, fnc_name, fnc, *args, **kwargs)
+
+        # Predict requires a user submitted iter function
+        if fnc_name == 'predict':
+            return wrapper
+            
+        # Train/Eval is automatically started
+        # TODO: Should we make this user configurable?
+        return wrapper.start()
 
     def __getattribute__(self, name):
         try:
             attr = SyncModel.__getattribute__(self.__model, name)
-            if name in ('train', 'test', 'evaluate'):
-                return lambda *args, **kwargs: self.wrap(attr, *args, **kwargs)
+            if name in ('train', 'predict', 'evaluate'):
+                return lambda *args, **kwargs: self.__wrap(name, attr, *args, **kwargs)
 
             return attr
         except:
