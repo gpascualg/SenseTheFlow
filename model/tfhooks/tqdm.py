@@ -38,6 +38,11 @@ class TqdmWrapper(object):
             self.epoch_bar.update(epoch - self.epoch)
             self.epoch = epoch
 
+    def done(self):
+        self.epoch_bar.close()
+        self.step_bar.close()
+
+
 class TqdmHook(tf.train.SessionRunHook):
     def __init__(self, wrapper):
         self._wrapper = wrapper

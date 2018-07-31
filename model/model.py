@@ -30,6 +30,7 @@ def _wrap_results(results, wrappers, epochs):
     # Clean tqdm and return
     tqdm_wrapper = wrappers.pop(0)
     tqdm_wrapper.update_epoch(epochs)
+    tqdm_wrapper.done()
     return results
 
 def _wrap_generator(generator, wrappers, epochs):
@@ -39,6 +40,7 @@ def _wrap_generator(generator, wrappers, epochs):
     # Clean after all yielding has been done
     tqdm_wrapper = wrappers.pop(0)
     tqdm_wrapper.update_epoch(epochs)
+    tqdm_wrapper.done()
 
 
 class Model(object):

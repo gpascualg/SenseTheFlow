@@ -1,23 +1,35 @@
 from ..model import Model as SyncModel
 from .internals import Thread
 
+import types
 from queue import Queue
 
 
-def _wrap_train(model, fnc, queue, callback, *args, **kwargs):
-    fnc(*args, **kwargs)
-    model.clean()
+def _push_result(result, queue, callback):
+    # Evaluate
+    if queue is not None:
+        queue.put(result)
+    
+    # Predict
+    if callback is not None:
+        callback(result)
 
-def _wrap_iterable(model, fnc, queue, callback, *args, **kwargs):
-    for generator in fnc(*args, **kwargs):
-        for result in generator:
-            # Evaluate
-            if queue is not None:
-                queue.put(result)
-            
-            # Predict
-            if callback is not None:
-                callback(result)
+def _wrap_execution(model, fnc, queue, callback, *args, **kwargs):
+    call_results = fnc(*args, **kwargs)
+
+    # Training produces no output (None)
+    if isinstance(call_results, types.GeneratorType):
+        for execution in call_results:
+            if isinstance(execution, types.GeneratorType):
+                # Each result is individually iterated when predicting
+                for result in execution:
+                    _push_result(result, queue, callback)
+            else:
+                # Execution is already a result, probably a dict from evaluate
+                _push_result(execution, queue, callback)
+    else:
+        # TODO: Do we really want this? As of now, this will push None
+        _push_result(call_results, queue, callback)
 
     model.clean()
 
@@ -32,12 +44,14 @@ class ExecutionWrapper(object):
         self.__args = args
         self.__kwargs = kwargs
 
-    def start(self, callback=None):
+    def start(self, callback=None, force_results=False):
         assert not self.isRunning(), "Model is already running"
 
-        self.__queue = Queue() if self.__fnc_name == 'evaluate' else None
-        target = _wrap_train if self.__fnc_name == 'train' else _wrap_iterable
-        self.__thread = Thread(target=target, args=(self.model, self.__fnc, self.__queue, callback) + self.__args, kwargs=self.__kwargs)
+        # Maybe we need all results to get pushed
+        if self.__fnc_name == 'evaluate' or force_results:
+            self.__queue = Queue()
+
+        self.__thread = Thread(target=_wrap_execution, args=(self.model, self.__fnc, self.__queue, callback) + self.__args, kwargs=self.__kwargs)
 
         # Attach to model instances and clean laters
         SyncModel.instances.append(self)
