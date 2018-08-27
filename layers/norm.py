@@ -55,7 +55,7 @@ def norm(x, norm_type, is_training, data_format, G=32, esp=1e-5, momentum=0.999,
     output = tf.layers.batch_normalization(
       x, center=True, scale=True, momentum=momentum,
       epsilon=epsilon, fused=True, axis=channel_dim(data_format),
-      is_training=is_training)
+      training=is_training)
   elif norm_type == 'group':
     output = GroupNorm(G, esp, data_format)(x)
   else:
