@@ -52,7 +52,7 @@ def norm(x, norm_type, is_training, data_format, G=32, esp=1e-5, momentum=0.999,
   if norm_type == 'none':
     output = x
   elif norm_type == 'batch':
-    output = tf.layers.batch_norm(
+    output = tf.layers.batch_normalization(
       x, center=True, scale=True, momentum=momentum,
       epsilon=epsilon, fused=True, axis=channel_dim(data_format),
       is_training=is_training)
