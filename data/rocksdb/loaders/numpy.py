@@ -107,7 +107,7 @@ class RocksNonConstantNumpy(RocksNumpy):
             ptr, plen = itr.value()
 
             shape = list((ctypes.c_int * 3).from_address(ptr))
-            value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr + 3 * 4), self.dtype, shape)
+            value = unserialize_numpy((self.ctype * (plen // self.dsize - 3 * 4)).from_address(ptr + 3 * 4), self.dtype, shape)
             yield value
 
             i += 1
