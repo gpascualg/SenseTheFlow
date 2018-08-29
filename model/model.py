@@ -140,9 +140,10 @@ class Model(object):
         for fnc in self.__clean:
             fnc()
 
-    def redraw_bars(self, epochs=None, leave=True):
+    def redraw_bars(self, epochs=None, leave=True, force=False):
         for mode, wrappers in self.__tqdm_hooks.items():
             for wrapper in wrappers:
+                wrapper.done(force=force)
                 wrapper.draw()
 
     def _estimator_hook(self, func, steps, callback=None, log=None, summary=None, hooks=None):
@@ -182,7 +183,7 @@ class Model(object):
 
         tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
         self.__tqdm_hooks[tf.estimator.ModeKeys.TRAIN].append(tqdm_wrapper)
-        self.redraw_bars()
+        self.redraw_bars(force=True)
 
         if cmd_args.debug:
             self.__callbacks += [tf_debug.LocalCLIDebugHook()]
@@ -228,7 +229,7 @@ class Model(object):
 
             tqdm_wrapper = tfhooks.TqdmWrapper(epochs=params.epochs(epochs), leave=params.leave_bar(leave_bar))
             self.__tqdm_hooks[tf.estimator.ModeKeys.PREDICT].append(tqdm_wrapper)
-            self.redraw_bars()
+            self.redraw_bars(force=True)
             pred_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
@@ -269,7 +270,7 @@ class Model(object):
 
             tqdm_wrapper = tfhooks.TqdmWrapper(epochs=params.epochs(epochs), leave=params.leave_bar(leave_bar))
             self.__tqdm_hooks[tf.estimator.ModeKeys.EVAL].append(tqdm_wrapper)
-            self.redraw_bars()
+            self.redraw_bars(force=True)
             eval_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
