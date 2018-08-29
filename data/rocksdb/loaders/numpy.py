@@ -78,7 +78,7 @@ class RocksNonConstantNumpy(RocksNumpy):
         while array.ndim < 3:
             array = array[..., np.newaxis]
 
-        assert array.ndim > 3, "Only 3D Data supported"
+        assert array.ndim <= 3, "Only 3D Data supported"
 
         # Initialize buffer with the shape
         data, value_len, c = serialize_numpy(array, self.dtype)  
