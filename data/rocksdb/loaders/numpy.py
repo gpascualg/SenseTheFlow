@@ -84,9 +84,11 @@ class RocksNonConstantNumpy(RocksNumpy):
         data, value_len, c = serialize_numpy(array, self.dtype)  
         shape_size = array.ndim * 4
         total_size = shape_size + value_len
-        buffer = (ctypes.c_uint8 * total_size)(*list(array.shape))
-
+        placeholder = (ctypes.c_int * array.ndim)(*list(array.shape))
+        
         # Copy array contents
+        buffer = (ctypes.c_uint8 * total_size)(0)
+        ctypes.memmove(ctypes.addressof(buffer), placeholder, shape_size)
         ctypes.memmove(ctypes.addressof(buffer) + shape_size, data, value_len)
 
         # Cast to pointer
