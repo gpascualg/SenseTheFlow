@@ -65,3 +65,55 @@ class RocksNumpy(RocksWildcard):
         split_a = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=None, num_samples=num_samples)
         split_b = RocksNumpy(self.name, self.max_key_size, append=False, delete=False, read_only=True, dtype=self.dtype, skip=num_samples+1, num_samples=None)
         return split_a, split_b
+
+
+class RocksNonConstantNumpy(RocksNumpy):
+    def __init__(self, name, max_key_size=None, append=False, delete=False, read_only=False, dtype=np.float32, skip=None, num_samples=None):
+        # Initialize parent
+        RocksNumpy.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
+
+    def put(self, data):
+        key_str = RocksWildcard.get_key(self)
+        data, value_len, c = serialize_numpy(data, self.dtype)  
+
+        while data.ndim < 3:
+            data = data[..., np.newaxis]
+
+        assert data.ndim > 3, "Only 3D Data supported"
+
+        # Initialize buffer with the shape
+        shape_size = data.ndim * 4
+        total_size = shape_size + value_len
+        buffer = (ctypes.c_uint8 * total_size)(*list(data.shape))
+
+        # Copy array contents
+        ctypes.memmove(ctypes.addressof(buffer) + shape_size, data, value_len)
+
+        # Cast to pointer
+        buffer = ctypes.cast(buffer, ctypes.c_void_p)
+
+        return self.db.write(ctypes.c_char_p(key_str), buffer, key_len=self.max_key_size, value_len=total_size)
+
+    def iterate(self):
+        self.itr = itr = self.db.iterator()
+
+        if self.skip is not None:
+            for i in range(self.skip): itr.next()
+
+        i = 0
+        while self.itr is not None and itr.valid():
+            ptr, plen = itr.value()
+
+            shape = list((ctypes.c_int * 3).from_address(ptr))
+            value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr + 3 * 4), self.dtype, shape)
+            yield value
+
+            i += 1
+            if self.num_samples is not None and i >= self.num_samples:
+                break
+
+            itr.next()
+
+        itr.close()
+        self.itr = None
+
