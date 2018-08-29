@@ -40,16 +40,10 @@ class TqdmWrapper(object):
 
     def done(self, force=False):
         if self.epoch_bar is not None:
-            if force and self.__leave:
-                self.epoch_bar.sp(close=True)
-            else:
-                self.epoch_bar.close()
+            self.epoch_bar.close()
         
         if self.step_bar is not None:
-            if force and self.__leave:
-                self.step_bar.sp(close=True)
-            else:
-                self.step_bar.close()
+            self.step_bar.close()
 
 
 class TqdmHook(tf.train.SessionRunHook):
