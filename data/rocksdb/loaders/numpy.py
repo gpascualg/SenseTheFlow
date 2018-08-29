@@ -72,19 +72,19 @@ class RocksNonConstantNumpy(RocksNumpy):
         # Initialize parent
         RocksNumpy.__init__(self, name, max_key_size, append, delete, read_only, dtype, skip, num_samples)
 
-    def put(self, data):
+    def put(self, array):
         key_str = RocksWildcard.get_key(self)
-        data, value_len, c = serialize_numpy(data, self.dtype)  
 
-        while data.ndim < 3:
-            data = data[..., np.newaxis]
+        while array.ndim < 3:
+            array = array[..., np.newaxis]
 
-        assert data.ndim > 3, "Only 3D Data supported"
+        assert array.ndim > 3, "Only 3D Data supported"
 
         # Initialize buffer with the shape
-        shape_size = data.ndim * 4
+        data, value_len, c = serialize_numpy(array, self.dtype)  
+        shape_size = array.ndim * 4
         total_size = shape_size + value_len
-        buffer = (ctypes.c_uint8 * total_size)(*list(data.shape))
+        buffer = (ctypes.c_uint8 * total_size)(*list(array.shape))
 
         # Copy array contents
         ctypes.memmove(ctypes.addressof(buffer) + shape_size, data, value_len)
