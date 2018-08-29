@@ -90,7 +90,7 @@ class RocksNonConstantNumpy(RocksNumpy):
         ctypes.memmove(ctypes.addressof(buffer) + shape_size, data, value_len)
 
         # Cast to pointer
-        buffer = ctypes.cast(buffer, ctypes.c_void_p)
+        buffer = ctypes.cast(buffer, ctypes.c_char_p)
 
         return self.db.write(ctypes.c_char_p(key_str), buffer, key_len=self.max_key_size, value_len=total_size)
 
