@@ -15,7 +15,7 @@ from ..helper import DefaultNamespace, cmd_args
 def rmtree(path):
     # Shutil in Jupyter causes unexpected behaviour (tensorboard won't recognize new model)
     try:
-        get_ipython().magic('rm -rf {} &>/dev/null'.format(path))
+        get_ipython().magic('sx rm -rf {} &>/dev/null'.format(path))
     except:
         try: shutil.rmtree(path)
         except: pass
