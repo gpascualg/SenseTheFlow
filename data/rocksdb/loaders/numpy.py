@@ -48,7 +48,7 @@ class RocksNumpy(RocksWildcard):
         while self.itr is not None and itr.valid():
             ptr, plen = itr.value()
             value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr), self.dtype, self.iter_shape)
-            yield value
+            yield value.copy()
 
             i += 1
             if self.num_samples is not None and i >= self.num_samples:
@@ -108,7 +108,7 @@ class RocksNonConstantNumpy(RocksNumpy):
 
             shape = list((ctypes.c_int * 3).from_address(ptr))
             value = unserialize_numpy((self.ctype * ((plen - 3 * 4) // self.dsize)).from_address(ptr + 3 * 4), self.dtype, shape)
-            yield value
+            yield value.copy()
 
             i += 1
             if self.num_samples is not None and i >= self.num_samples:
