@@ -73,7 +73,9 @@ class DataParser(object):
                     pre_shuffle, num_epochs))
             else:
                 dataset = dataset.repeat(num_epochs)
-
+        elif pre_shuffle:
+            dataset.shuffle(pre_shuffle)
+        
         num_cpu = multiprocessing.cpu_count()
 
         # Unless some specific actions must be performed,
