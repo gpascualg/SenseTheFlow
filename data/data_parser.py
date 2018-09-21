@@ -80,16 +80,16 @@ class DataParser(object):
 
         # Unless some specific actions must be performed,
         # parallelize everything
-        if batch_size > 0 and \
+        can_fuse_map = batch_size > 0 and \
             parser_fn is not None and \
-            not flatten and \
-            num_samples is None:
+            not flatten
 
+        if can_fuse_map:
             dataset = dataset.apply(tf.contrib.data.map_and_batch(
                 map_func=lambda *args: parser_fn(*args, mode=mode), 
                 batch_size=batch_size,
                 num_parallel_batches=num_cpu))
-        
+
         else:
             if parser_fn is not None:
                 dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), 
@@ -98,14 +98,17 @@ class DataParser(object):
             if flatten:
                 dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
 
-            # Post-parsing shuffle + repeat
-            if post_shuffle:
+        # Post-parsing shuffle + repeat
+        if post_shuffle:
+            if not pre_shuffle:
                 dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
                     post_shuffle, num_epochs))
+            else:
+                dataset = dataset.shuffle(post_shuffle)
         
-            # Create batches
-            if batch_size > 0:
-                dataset = dataset.batch(batch_size)
+        # Create batches
+        if not can_fuse_map and batch_size > 0:
+            dataset = dataset.batch(batch_size)
 
         # Prefetch to avoid IDLE time
         if batch_size > 0:
