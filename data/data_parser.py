@@ -1,4 +1,5 @@
 import tensorflow as tf
+import multiprocessing
 
 from ..helper import DefaultNamespace
 
@@ -57,34 +58,58 @@ class DataParser(object):
 
         dataset = tf.data.Dataset.from_generator(**generator)
 
-        # Pre-parsing shuffle
-        if pre_shuffle:
-            dataset = dataset.shuffle(buffer_size=pre_shuffle)
-
+        # Skip initial X
         if skip is not None:
             dataset = dataset.skip(skip)
 
-        # No need to parse anything?
-        if parser_fn is not None:
-            dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), num_parallel_calls=5)
-
-        if flatten:
-            dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
-
-        if batch_size > 0:
-            dataset = dataset.prefetch(batch_size)
-
-        # Post-parsing
-        if post_shuffle:
-            dataset = dataset.shuffle(buffer_size=post_shuffle)
-
+        # Take only next X
         if num_samples is not None:
             dataset = dataset.take(num_samples)
 
-        dataset = dataset.repeat(num_epochs)
+        # Shuffling is tricky with repeated datasets
+        if not post_shuffle:
+            if pre_shuffle:
+                dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
+                    pre_shuffle, num_epochs))
+            else:
+                dataset = dataset.repeat(num_epochs)
+
+        num_cpu = multiprocessing.cpu_count()
+
+        # Unless some specific actions must be performed,
+        # parallelize everything
+        if batch_size > 0 and \
+            parser_fn is not None and \
+            not flatten and \
+            num_samples is None:
+
+            dataset = dataset.apply(tf.contrib.data.map_and_batch(
+                map_func=lambda *args: parser_fn(*args, mode=mode), 
+                batch_size=batch_size,
+                num_parallel_batches=num_cpu))
+        
+        else:
+            if parser_fn is not None:
+                dataset = dataset.map(lambda *args: parser_fn(*args, mode=mode), 
+                    num_parallel_calls=num_cpu)
+
+            if flatten:
+                dataset = dataset.flat_map(lambda *args: tf.data.Dataset.from_tensor_slices((*args,)))
+
+            # Post-parsing shuffle + repeat
+            if post_shuffle:
+                dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
+                    post_shuffle, num_epochs))
+        
+            # Create batches
+            if batch_size > 0:
+                dataset = dataset.batch(batch_size)
+
+        # Prefetch to avoid IDLE time
         if batch_size > 0:
-            dataset = dataset.batch(batch_size)
-            
+            dataset = dataset.prefetch(batch_size)
+
+        # We are done
         iterator = dataset.make_one_shot_iterator()
 
         if mode == tf.estimator.ModeKeys.PREDICT:
