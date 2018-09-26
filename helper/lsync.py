@@ -3,9 +3,9 @@ import os
 
 
 def spawn(source, target):
-    return subprocess.Popen(['lsyncd', '-rsync', source, target])
+    return subprocess.Popen(['lsyncd', '-nodaemon', '-rsync', source, target])
 
-class LSync(object):
+class LSync(object):    
     def __init__(self, model, target_folder, sync_train=False, sync_eval=True, copy_at_end=True, remove_at_end=True):
         self._model = model
         self._copy_at_end = copy_at_end
