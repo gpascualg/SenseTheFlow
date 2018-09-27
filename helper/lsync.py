@@ -7,28 +7,20 @@ def spawn(source, target):
     return subprocess.Popen(['lsyncd', '-nodaemon', '-rsync', source, target])
 
 class LSync(object):    
-    def __init__(self, model, target_folder, sync_train=False, sync_eval=True, copy_at_start=True, copy_at_end=True, remove_at_end=True):
+    def __init__(self, model, target_folder, sync_train=True, copy_at_start=True, copy_at_end=True, remove_at_end=True):
         self._model = model
         self._copy_at_end = copy_at_end
         self._remove_at_end = remove_at_end
-        self._sync_eval = sync_eval
         self._sync_train = sync_train
 
         # Setup callback
         model.clean_fnc(self.on_end)
 
         # Setup daemon parameters
-        source_dir = self._source_dir = model.classifier().model_dir
+        self._source_dir = model.classifier().model_dir
         model_name = os.path.basename(os.path.normpath(self._source_dir))
-        target_dir = self._target_dir = os.path.join(target_folder, model_name)
+        self._target_dir = os.path.join(target_folder, model_name)
 
-        if self._sync_eval:
-            source_dir = os.path.join(source_dir, 'eval')
-            target_dir = os.path.join(target_dir, 'eval')
-
-        self._init_source_dir = source_dir
-        self._init_target_dir = target_dir
-        
         if copy_at_start:
             self.__thread = Thread(target=self.copy_and_init)
             self.__thread.start()
@@ -46,8 +38,8 @@ class LSync(object):
             self.__thread.join()
 
     def on_init_done(self):
-        if self._sync_eval or self._sync_train:
-            self._process = spawn(self._init_source_dir, self._init_target_dir)
+        if self._sync_train:
+            self._process = spawn(self._source_dir, self._target_dir)
         else:
             self._process = None
 
