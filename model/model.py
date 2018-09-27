@@ -62,6 +62,7 @@ class Model(object):
         
         self.__classifier = None
         self.__callbacks = []
+        self.__prerun_hooks = []
         self.__tqdm_hooks = {
             tf.estimator.ModeKeys.TRAIN: [],
             tf.estimator.ModeKeys.EVAL: [],
@@ -176,9 +177,17 @@ class Model(object):
             log, 
             summary
         )
+
+    def add_prerun_hook(self, hook):
+        self.__prerun_hooks.append(hook)
+
+    def _execute_prerun_hooks(self, mode):
+        for fnc in self.__prerun_hooks:
+            fnc(self, mode)
     
     def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
         assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
+        self._execute_prerun_hooks(tf.estimator.ModeKeys.TRAIN)
 
         tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
         self.__tqdm_hooks[tf.estimator.ModeKeys.TRAIN].append(tqdm_wrapper)
@@ -217,6 +226,7 @@ class Model(object):
                     print('You have no `evaluation` dataset')
 
     def predict(self, epochs=1, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+        self._execute_prerun_hooks(tf.estimator.ModeKeys.PREDICT)
         total = self.__data_parser.num(tf.estimator.ModeKeys.PREDICT)
 
         for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.PREDICT, num_epochs=epochs)):
@@ -257,6 +267,7 @@ class Model(object):
         
 
     def evaluate(self, epochs=1, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+        self._execute_prerun_hooks(tf.estimator.ModeKeys.EVAL)
         total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
 
         for k, (input_fn, params) in enumerate(self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.EVAL, num_epochs=epochs)):
