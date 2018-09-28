@@ -6,11 +6,13 @@ import tempfile
 
 
 class LSync(object):    
-    def __init__(self, model, target_folder, sync_train=True, copy_at_start=True, copy_at_end=True, remove_at_end=True):
+    def __init__(self, model, target_folder, sync_train=True, copy_at_start=True,
+        copy_at_end=True, remove_at_end=True, verbose=True):
         self._model = model
         self._copy_at_end = copy_at_end
         self._remove_at_end = remove_at_end
         self._sync_train = sync_train
+        self._verbose = verbose
 
         # Setup callback
         model.clean_fnc(self.on_end)
@@ -25,6 +27,7 @@ class LSync(object):
         self._source_dir = os.path.normpath(source_dir)
         self._target_dir = os.path.normpath(target_dir)
 
+        self.log("[LSYNCD] Initial setup")
         self.call(['mkdir', '-p', self._source_dir])
         self.call(['mkdir', '-p', self._target_dir])
 
@@ -41,6 +44,9 @@ class LSync(object):
             self._logfile.write('{}\n'.format(msg))
             self._logfile.flush()
 
+        if self._verbose:
+            print('{}\n'.format(msg))
+
     def call(self, args):
         self.log(args)
         subprocess.call(args)
@@ -50,6 +56,7 @@ class LSync(object):
         return subprocess.Popen(args, stdout=stdout)
         
     def copy_and_init(self):
+        self.log("[LSYNCD] Initial copy")
         self.call(['cp', '-rT', self._target_dir, self._source_dir])
         self.on_init_done()
 
@@ -80,6 +87,7 @@ class LSync(object):
                     )
                 )
                 
+            self.log("[LSYNCD] Starting")
             self._process = self.spawn(['lsyncd', settingspath], self._logfile)
         else:
             self._process = None
