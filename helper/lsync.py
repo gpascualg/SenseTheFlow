@@ -1,10 +1,9 @@
 from ..async.internals import Thread
 import subprocess
 import os
+import textwrap
+import tempfile
 
-
-def spawn(source, target, stdout=None):
-    return subprocess.Popen(['lsyncd', '-nodaemon', '-rsync', source, target], stdout=stdout)
 
 class LSync(object):    
     def __init__(self, model, target_folder, sync_train=True, copy_at_start=True, copy_at_end=True, remove_at_end=True):
@@ -21,7 +20,8 @@ class LSync(object):
         self._model_name = os.path.basename(os.path.normpath(source_dir))
         target_dir = os.path.join(target_folder, self._model_name)
 
-        self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncd.out'), 'w')
+        logpath = os.path.join(tempfile.gettempdir(), self._model_name + '.lsyncd')
+        self._logfile = open(logpath, 'w')
         self._source_dir = os.path.normpath(source_dir)
         self._target_dir = os.path.normpath(target_dir)
 
@@ -36,12 +36,18 @@ class LSync(object):
             self.__thread = None
             self.on_init_done()
 
-    def call(self, args):
+    def log(self, msg):
         if self._logfile is not None:
-            self._logfile.write('{}\n'.format(args))
+            self._logfile.write('{}\n'.format(msg))
             self._logfile.flush()
-        
+
+    def call(self, args):
+        self.log(args)
         subprocess.call(args)
+
+    def spawn(self, args, stdout=None):
+        self.log(args)
+        return subprocess.Popen(args, stdout=stdout)
         
     def copy_and_init(self):
         self.call(['cp', '-rT', self._target_dir, self._source_dir])
@@ -53,7 +59,28 @@ class LSync(object):
 
     def on_init_done(self):
         if self._sync_train:
-            self._process = spawn(self._source_dir, self._target_dir)
+            settings = """
+                settings {{
+                    nodaemon = true,
+                    inotifyMode = "CloseWrite or Modify"
+                }}
+
+                sync {{
+                    default.rsync,
+                    source = "{0}"
+                    target = "{1}"
+                }}
+            """
+
+            settingspath = os.path.join(tempfile.gettempdir(), self._model_name + '.settings')
+            with open(settingspath, 'w') as fp:
+                fp.write(
+                    textwrap.dedent(
+                        settings.format(self._source_dir, self._target_dir)
+                    )
+                )
+                
+            self._process = self.spawn(['lsyncd', settingspath], self._logfile)
         else:
             self._process = None
 
