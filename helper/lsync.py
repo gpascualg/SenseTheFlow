@@ -60,7 +60,7 @@ class LSync(object):
     def rsync(self, source, target, description):
         source = source + os.sep
         target = target + os.sep
-        
+
         proc = subprocess.Popen(
             ['rsync', '-Wa', '--stats', '--dry-run', source, target],
             stdin=subprocess.PIPE,
@@ -78,7 +78,7 @@ class LSync(object):
         )
 
         with bar(total=total_files, leave=False) as progress:
-            bar.set_description(description)
+            progress.set_description(description)
             last = 0
             while True:
                 output = proc.stdout.readline().decode('utf-8')
