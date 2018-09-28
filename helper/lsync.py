@@ -67,11 +67,11 @@ class LSync(object):
             self._process = None
 
         if self._copy_at_end and self._remove_at_end:
-            self.call(['mv', self._source_dir, self._target_dir])
+            self.call(['mv', '-T', self._source_dir, self._target_dir])
         elif self._copy_at_end:
             self.call(['cp', '-rT', self._source_dir, self._target_dir])
         elif self._remove_at_end:
-            self.call(['rm', self._source_dir])
+            self.call(['rm', '-rf', self._source_dir])
 
         if self._logfile is not None:
             self._logfile.flush()
