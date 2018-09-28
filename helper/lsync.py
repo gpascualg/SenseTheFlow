@@ -21,6 +21,9 @@ class LSync(object):
         model_name = os.path.basename(os.path.normpath(self._source_dir))
         self._target_dir = os.path.join(target_folder, model_name)
 
+        subprocess.call(['mkdir', '-p', self._source_dir])
+        subprocess.call(['mkdir', '-p', self._target_dir])
+
         if copy_at_start:
             self.__thread = Thread(target=self.copy_and_init)
             self.__thread.start()
@@ -30,7 +33,7 @@ class LSync(object):
             self.on_init_done()
         
     def copy_and_init(self):
-        subprocess.call(['cp', self._target_dir, self._source_dir])
+        subprocess.call(['cp', '-r', self._target_dir, self._source_dir])
         self.on_init_done()
 
     def wait_initial_copy_done(self, model, mode):
