@@ -58,6 +58,9 @@ class LSync(object):
         return subprocess.Popen(args, stdout=self._logfile)
 
     def rsync(self, source, target, description):
+        source = source + os.sep
+        target = target + os.sep
+        
         proc = subprocess.Popen(
             ['rsync', '-Wa', '--stats', '--dry-run', source, target],
             stdin=subprocess.PIPE,
