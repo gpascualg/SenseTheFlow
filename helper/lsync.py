@@ -1,6 +1,8 @@
 from ..async.internals import Thread
+from ..config import bar
 import subprocess
 import os
+import re
 import textwrap
 import tempfile
 
@@ -39,9 +41,9 @@ class LSync(object):
             self.__thread = None
             self.on_init_done()
 
-    def log(self, msg):
+    def log(self, msg, endline="\n"):
         if self._logfile is not None:
-            self._logfile.write('{}\n'.format(msg))
+            self._logfile.write('{}{}'.format(msg, endline))
             self._logfile.flush()
 
         if self._verbose:
@@ -49,15 +51,51 @@ class LSync(object):
 
     def call(self, args):
         self.log(args)
-        subprocess.call(args)
+        return subprocess.call(args, stdout=self._logfile)
 
-    def spawn(self, args, stdout=None):
+    def spawn(self, args):
         self.log(args)
-        return subprocess.Popen(args, stdout=stdout)
+        return subprocess.Popen(args, stdout=self._logfile)
+
+    def rsync(self, source, target):
+        proc = subprocess.Popen(
+            ['rsync', '-Wa', '--stats', '--dry-run', source, target],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE
+        )
+
+        remainder = proc.communicate()[0]
+        mn = re.findall(r'Number of files: (\d+)', remainder.decode('utf-8'))
+        total_files = int(mn[0])
+
+        proc = subprocess.Popen(
+            ['rsync', '-Wav', '--progress', source, target],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE
+        )
+
+        with bar(total=total_files, leave=False) as progress:
+            last = 0
+            while True:
+                output = proc.stdout.readline().decode('utf-8')
+                if not output:
+                    break
+                
+                self.log(output, "")
+                if 'to-chk' in output:
+                    m = re.findall(r'to-check=(\d+)/(\d+)', output)
+                    num = int(m[0][1]) - int(m[0][0])
+
+                    if last != num:
+                        progress.update(num - last)
+                        last = num
+                    
+                    if int(m[0][0]) == 0:
+                        break
         
     def copy_and_init(self):
         self.log("[LSYNCD] Initial copy")
-        self.call(['cp', '-rT', self._target_dir, self._source_dir])
+        self.rsync(self._target_dir, self._source_dir)
         self.on_init_done()
 
     def wait_initial_copy_done(self, model, mode):
@@ -74,7 +112,7 @@ class LSync(object):
 
                 sync {{
                     default.rsync,
-                    source = "{0}"
+                    source = "{0}",
                     target = "{1}"
                 }}
             """
@@ -88,7 +126,7 @@ class LSync(object):
                 )
                 
             self.log("[LSYNCD] Starting")
-            self._process = self.spawn(['lsyncd', settingspath], self._logfile)
+            self._process = self.spawn(['lsyncd', settingspath])
         else:
             self._process = None
 
@@ -101,11 +139,10 @@ class LSync(object):
             self._process.wait()
             self._process = None
 
-        if self._copy_at_end and self._remove_at_end:
-            self.call(['mv', '-T', self._source_dir, self._target_dir])
-        elif self._copy_at_end:
-            self.call(['cp', '-rT', self._source_dir, self._target_dir])
-        elif self._remove_at_end:
+        if self._copy_at_end:
+            self.rsync(self._source_dir, self._target_dir)
+        
+        if self._remove_at_end:
             self.call(['rm', '-rf', self._source_dir])
 
         if self._logfile is not None:
