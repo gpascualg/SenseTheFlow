@@ -84,6 +84,7 @@ class LSync(object):
                 output = proc.stdout.readline().decode('utf-8')
                 if not output:
                     if proc.poll() is not None:
+                        progress.update(total_files - last)
                         break
                     else:
                         continue
