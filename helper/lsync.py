@@ -83,7 +83,10 @@ class LSync(object):
             while True:
                 output = proc.stdout.readline().decode('utf-8')
                 if not output:
-                    break
+                    if proc.poll() is not None:
+                        break
+                    else:
+                        continue
                 
                 self.log(output, "")
                 if 'to-chk' in output:
