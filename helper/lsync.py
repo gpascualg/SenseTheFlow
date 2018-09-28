@@ -21,7 +21,7 @@ class LSync(object):
         self._model_name = os.path.basename(os.path.normpath(source_dir))
         target_dir = os.path.join(target_folder, self._model_name)
 
-        self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncdout'), 'w')
+        self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncd.out'), 'w')
         self._source_dir = os.path.normpath(source_dir)
         self._target_dir = os.path.normpath(target_dir)
 
