@@ -12,7 +12,6 @@ class LSync(object):
         self._copy_at_end = copy_at_end
         self._remove_at_end = remove_at_end
         self._sync_train = sync_train
-        self._logfile = None
 
         # Setup callback
         model.clean_fnc(self.on_end)
@@ -22,11 +21,12 @@ class LSync(object):
         self._model_name = os.path.basename(os.path.normpath(source_dir))
         target_dir = os.path.join(target_folder, self._model_name)
 
+        self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncdout'), 'w')
         self._source_dir = os.path.normpath(source_dir)
         self._target_dir = os.path.normpath(target_dir)
 
-        subprocess.call(['mkdir', '-p', self._source_dir])
-        subprocess.call(['mkdir', '-p', self._target_dir])
+        self.call(['mkdir', '-p', self._source_dir])
+        self.call(['mkdir', '-p', self._target_dir])
 
         if copy_at_start:
             self.__thread = Thread(target=self.copy_and_init)
@@ -35,9 +35,13 @@ class LSync(object):
         else:
             self.__thread = None
             self.on_init_done()
+
+    def call(self, args):
+        self._logfile.write('{}\n'.format(args))
+        subprocess.call(args)
         
     def copy_and_init(self):
-        subprocess.call(['cp', '-r', self._target_dir, self._source_dir])
+        self.call(['cp', '-r', self._target_dir, self._source_dir])
         self.on_init_done()
 
     def wait_initial_copy_done(self, model, mode):
@@ -46,7 +50,6 @@ class LSync(object):
 
     def on_init_done(self):
         if self._sync_train:
-            self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncdout'), 'w')
             self._process = spawn(self._source_dir, self._target_dir)
         else:
             self._process = None
@@ -66,9 +69,9 @@ class LSync(object):
             self._logfile = None
 
         if self._copy_at_end and self._remove_at_end:
-            subprocess.call(['mv', self._source_dir, self._target_dir])
+            self.call(['mv', self._source_dir, self._target_dir])
         elif self._copy_at_end:
-            subprocess.call(['cp', self._source_dir, self._target_dir])
+            self.call(['cp', self._source_dir, self._target_dir])
         elif self._remove_at_end:
-            subprocess.call(['rm', self._source_dir])
+            self.call(['rm', self._source_dir])
 
