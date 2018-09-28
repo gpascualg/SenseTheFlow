@@ -47,7 +47,7 @@ class LSync(object):
             self._logfile.flush()
 
         if self._verbose:
-            print('{}\n'.format(msg))
+            print('{}{}'.format(msg, endline))
 
     def call(self, args):
         self.log(args)
@@ -57,7 +57,7 @@ class LSync(object):
         self.log(args)
         return subprocess.Popen(args, stdout=self._logfile)
 
-    def rsync(self, source, target):
+    def rsync(self, source, target, description):
         proc = subprocess.Popen(
             ['rsync', '-Wa', '--stats', '--dry-run', source, target],
             stdin=subprocess.PIPE,
@@ -75,6 +75,7 @@ class LSync(object):
         )
 
         with bar(total=total_files, leave=False) as progress:
+            bar.set_description(description)
             last = 0
             while True:
                 output = proc.stdout.readline().decode('utf-8')
@@ -95,7 +96,7 @@ class LSync(object):
         
     def copy_and_init(self):
         self.log("[LSYNCD] Initial copy")
-        self.rsync(self._target_dir, self._source_dir)
+        self.rsync(self._target_dir, self._source_dir, 'Initial copy')
         self.on_init_done()
 
     def wait_initial_copy_done(self, model, mode):
@@ -140,7 +141,7 @@ class LSync(object):
             self._process = None
 
         if self._copy_at_end:
-            self.rsync(self._source_dir, self._target_dir)
+            self.rsync(self._source_dir, self._target_dir, 'Copy at end')
         
         if self._remove_at_end:
             self.call(['rm', '-rf', self._source_dir])
