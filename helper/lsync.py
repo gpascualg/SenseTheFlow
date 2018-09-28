@@ -18,9 +18,12 @@ class LSync(object):
         model.clean_fnc(self.on_end)
 
         # Setup daemon parameters
-        self._source_dir = model.classifier().model_dir
-        self._model_name = os.path.basename(os.path.normpath(self._source_dir))
-        self._target_dir = os.path.join(target_folder, self._model_name)
+        source_dir = model.classifier().model_dir
+        self._model_name = os.path.basename(os.path.normpath(source_dir))
+        target_dir = os.path.join(target_folder, self._model_name)
+
+        self._source_dir = os.path.normpath(source_dir)
+        self._target_dir = os.path.normpath(target_dir)
 
         subprocess.call(['mkdir', '-p', self._source_dir])
         subprocess.call(['mkdir', '-p', self._target_dir])
