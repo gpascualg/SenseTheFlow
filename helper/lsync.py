@@ -12,14 +12,15 @@ class LSync(object):
         self._copy_at_end = copy_at_end
         self._remove_at_end = remove_at_end
         self._sync_train = sync_train
+        self._logfile = None
 
         # Setup callback
         model.clean_fnc(self.on_end)
 
         # Setup daemon parameters
         self._source_dir = model.classifier().model_dir
-        model_name = os.path.basename(os.path.normpath(self._source_dir))
-        self._target_dir = os.path.join(target_folder, model_name)
+        self._model_name = os.path.basename(os.path.normpath(self._source_dir))
+        self._target_dir = os.path.join(target_folder, self._model_name)
 
         subprocess.call(['mkdir', '-p', self._source_dir])
         subprocess.call(['mkdir', '-p', self._target_dir])
@@ -42,6 +43,7 @@ class LSync(object):
 
     def on_init_done(self):
         if self._sync_train:
+            self._logfile = open(os.path.join('/tmp', self._model_name + '.lsyncdout'), 'w')
             self._process = spawn(self._source_dir, self._target_dir)
         else:
             self._process = None
@@ -52,7 +54,13 @@ class LSync(object):
         
         if self._process is not None:
             self._process.kill()
+            self._process.wait()
             self._process = None
+
+        if self._logfile is not None:
+            self._logfile.flush()
+            self._logfile.close()
+            self._logfile = None
 
         if self._copy_at_end and self._remove_at_end:
             subprocess.call(['mv', self._source_dir, self._target_dir])
