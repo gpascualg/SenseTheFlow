@@ -83,7 +83,7 @@ class LSync(object):
                 
                 self.log(output, "")
                 if 'to-chk' in output:
-                    m = re.findall(r'to-check=(\d+)/(\d+)', output)
+                    m = re.findall(r'to-chk=(\d+)/(\d+)', output)
                     num = int(m[0][1]) - int(m[0][0])
 
                     if last != num:
