@@ -37,8 +37,10 @@ class LSync(object):
             self.on_init_done()
 
     def call(self, args):
-        self._logfile.write('{}\n'.format(args))
-        self._logfile.flush()
+        if self._logfile is not None:
+            self._logfile.write('{}\n'.format(args))
+            self._logfile.flush()
+        
         subprocess.call(args)
         
     def copy_and_init(self):
@@ -64,11 +66,6 @@ class LSync(object):
             self._process.wait()
             self._process = None
 
-        if self._logfile is not None:
-            self._logfile.flush()
-            self._logfile.close()
-            self._logfile = None
-
         if self._copy_at_end and self._remove_at_end:
             self.call(['mv', self._source_dir, self._target_dir])
         elif self._copy_at_end:
@@ -76,3 +73,7 @@ class LSync(object):
         elif self._remove_at_end:
             self.call(['rm', self._source_dir])
 
+        if self._logfile is not None:
+            self._logfile.flush()
+            self._logfile.close()
+            self._logfile = None
