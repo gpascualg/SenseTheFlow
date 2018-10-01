@@ -9,12 +9,13 @@ import tempfile
 
 class LSync(object):    
     def __init__(self, model, target_folder, sync_train=True, copy_at_start=True,
-        copy_at_end=True, remove_at_end=True, verbose=True):
+        copy_at_end=True, remove_at_end=True, verbose=True, use_symlink=True):
         self._model = model
         self._copy_at_end = copy_at_end
         self._remove_at_end = remove_at_end
         self._sync_train = sync_train
         self._verbose = verbose
+        self._use_symlink = use_symlink
 
         # Setup callback
         model.clean_fnc(self.on_end)
@@ -111,7 +112,13 @@ class LSync(object):
             self.__thread.join()
 
     def on_init_done(self):
-        if self._sync_train:
+        self._process = None
+
+        if self._use_symlink:
+            self.call(['rm', '-rf', self._target_dir])
+            self.call(['ln', '-s', self._source_dir, self._target_dir])
+
+        elif self._sync_train:
             settings = """
                 settings {{
                     nodaemon = true,
@@ -135,8 +142,6 @@ class LSync(object):
                 
             self.log("[LSYNCD] Starting")
             self._process = self.spawn(['lsyncd', settingspath])
-        else:
-            self._process = None
 
     def on_end(self):
         if self.__thread is not None:
@@ -146,6 +151,9 @@ class LSync(object):
             self._process.kill()
             self._process.wait()
             self._process = None
+
+        if self._use_symlink:
+            self.call(['rm', self._target_dir])
 
         if self._copy_at_end:
             self.rsync(self._source_dir, self._target_dir, 'Copy at end')
