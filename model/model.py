@@ -4,6 +4,8 @@ import shutil
 import copy
 import tqdm
 import tensorflow as tf
+import time
+import datetime
 from inspect import signature
 from tensorflow.python import debug as tf_debug
 
@@ -47,7 +49,8 @@ class Model(object):
     instances = []
     
     def __init__(self, model_fn, model_dir, 
-        config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False):
+        config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False,
+        prepend_timestamp=False, append_timestamp=False):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
@@ -78,6 +81,18 @@ class Model(object):
 
         run_config = run_config \
             .replace(session_config=self.__config)
+
+        if prepend_timestamp or append_timestamp:
+            value = datetime.datetime.fromtimestamp(time.time())
+            value = value.strftime('%Y%m%d-%H%M%S')
+
+            if append_timestamp:
+                model_dir = os.path.join(model_dir, value) 
+            else:
+                model_dir = os.path.normpath(model_dir)
+                model_name = os.path.basename(model_dir)
+                model_dir = model_dir[:-len(model_name)]
+                model_dir = os.path.join(model_dir, value, model_name)
 
         # Output some information
         print('Target model directory: {}'.format(model_dir))
