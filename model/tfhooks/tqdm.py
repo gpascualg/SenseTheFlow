@@ -17,7 +17,11 @@ class TqdmWrapper(object):
         self.step_bar = None
 
     def create(self):
-        self.__hook = TqdmHook(self)
+        last_step = 0
+        if self.__hook is not None:
+            last_step = self.__hook.last_step()
+
+        self.__hook = TqdmHook(self, last_step)
         return self.__hook
 
     def draw(self):
@@ -47,10 +51,13 @@ class TqdmWrapper(object):
 
 
 class TqdmHook(tf.train.SessionRunHook):
-    def __init__(self, wrapper):
+    def __init__(self, wrapper, last_step):
         self._wrapper = wrapper
-        self._last_step = 0
+        self._last_step = last_step
         self._forced_update = False
+
+    def last_step(self):
+        return self._last_step
 
     def force_update(self):
         self._forced_update = True
