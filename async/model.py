@@ -81,6 +81,7 @@ class Model(SyncModel):
 
     def stop(self, block=True):
         task = create_async_task(self.__stop_callback, AsyncTaskMode.AFTER_RUN)
+        self.__model.stop_has_been_requested = True
         self.__async_task.push(task)
 
         if block:

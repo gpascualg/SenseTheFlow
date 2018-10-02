@@ -68,8 +68,8 @@ class ExecutionWrapper(object):
         if self.isRunning():
             if not force:
                 self.model.stop()
-                
-            self.__thread.terminate()
+            else:
+                self.__thread.terminate()
             self.__thread.join()
             self.model.clean()
             return True

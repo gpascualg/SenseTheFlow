@@ -73,6 +73,7 @@ class Model(object):
             tf.estimator.ModeKeys.PREDICT: []
         }
 
+        self.stop_has_been_requested = False
         self.__clean = []
 
         # Set up a RunConfig to only save checkpoints once per training cycle.
@@ -295,6 +296,10 @@ class Model(object):
                     hooks=self.__callbacks + [tqdm_wrapper.create(), logger, step_counter]
                 )
 
+                # Stop request during training
+                if self.stop_has_been_requested:
+                    return
+
             # Update epochs
             tqdm_wrapper.update_epoch(epoch + train_epochs)
 
@@ -305,6 +310,10 @@ class Model(object):
                     _ = list(evaluator)  # Force generator to iterate all elements
                 else:
                     print('You have no `evaluation` dataset')
+
+            # Stop request during eval
+            if self.stop_has_been_requested:
+                return
 
     def predict(self, epochs=1, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         self._execute_prerun_hooks(tf.estimator.ModeKeys.PREDICT)
