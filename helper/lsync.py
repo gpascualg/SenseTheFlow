@@ -104,8 +104,14 @@ class LSync(object):
         
     def copy_and_init(self):
         self.log("[LSYNCD] Initial copy")
+        
+        if self._use_symlink:
+            if os.path.islink(self._source_dir):
+                self.call(['rm', self._source_dir])
+        
         if not os.path.islink(self._target_dir):
             self.rsync(self._target_dir, self._source_dir, 'Initial copy')
+        
         self.on_init_done()
 
     def wait_initial_copy_done(self, model, mode):
@@ -161,6 +167,9 @@ class LSync(object):
         
         if self._remove_at_end:
             self.call(['rm', '-rf', self._source_dir])
+
+        if self._use_symlink:
+            self.call(['ln', '-s', self._target_dir, self._source_dir])
 
         if self._logfile is not None:
             self._logfile.flush()
