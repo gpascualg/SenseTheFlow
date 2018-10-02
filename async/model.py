@@ -50,7 +50,7 @@ class Model(SyncModel):
         # SyncModel.current = None
         pass
 
-    def __save_callback(self, model, session, step):
+    def __save_callback(self, model, run_context, step):
         # @tf.CheckpointSaverHook
         # Get saver from the SAVERS collection if present.
         collection_key = tf.GraphKeys.SAVERS
@@ -67,7 +67,10 @@ class Model(SyncModel):
                 format(collection_key))
 
         saver = savers[0]
-        saver.save(session, os.path.join(self.__model.classifier().model_dir, 'model.ckpt'), global_step=step)
+        saver.save(run_context.session, os.path.join(self.__model.classifier().model_dir, 'model.ckpt'), global_step=step)
+
+    def __stop_callback(self, model, run_context, step):
+        run_context.request_stop()
 
     def save(self, block=True):
         task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN)
@@ -75,3 +78,11 @@ class Model(SyncModel):
 
         if block:
             task.semaphore.acquire()
+
+    def stop(self, block=True):
+        task = create_async_task(self.__stop_callback, AsyncTaskMode.AFTER_RUN)
+        self.__async_task.push(task)
+
+        if block:
+            task.semaphore.acquire()
+    

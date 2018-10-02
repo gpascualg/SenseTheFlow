@@ -64,8 +64,11 @@ class ExecutionWrapper(object):
         return self
 
     # Expose some functions
-    def terminate(self):
+    def terminate(self, force=False):
         if self.isRunning():
+            if not force:
+                self.model.stop()
+                
             self.__thread.terminate()
             self.__thread.join()
             self.model.clean()

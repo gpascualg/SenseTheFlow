@@ -42,8 +42,8 @@ class AsyncTaskHook(tf.train.SessionRunHook):
     def push(self, task):
         self._queue[task.mode].put(task, False)
 
-    def _execute_task(self, task, session):
-        task.callback(self._model, session, self._global_step)
+    def _execute_task(self, task, run_context):
+        task.callback(self._model, run_context, self._global_step)
         task.semaphore.release()
 
     def _execute(self, mode, session):
@@ -78,9 +78,9 @@ class AsyncTaskHook(tf.train.SessionRunHook):
         self._execute(AsyncTaskMode.AFTER_CREATE, session)
 
     def before_run(self, run_context):  # pylint: disable=unused-argument
-        self._execute(AsyncTaskMode.BEFORE_RUN, run_context.session)
+        self._execute(AsyncTaskMode.BEFORE_RUN, run_context)
         return tf.train.SessionRunArgs(self._global_step_tensor)
 
     def after_run(self, run_context, run_values):
         self._global_step = run_values.results + 1
-        self._execute(AsyncTaskMode.AFTER_RUN, run_context.session)
+        self._execute(AsyncTaskMode.AFTER_RUN, run_context)
