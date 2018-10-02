@@ -84,22 +84,20 @@ class Model(object):
         run_config = run_config \
             .replace(session_config=self.__config)
 
-        must_create_model = True
         model_dir = os.path.normpath(model_dir)
         model_name = os.path.basename(model_dir)
         model_dir = model_dir[:-len(model_name)]
 
         self.model_components = [model_name]
-        
-        if delete_existing:
-            ignore = False
-            
-            for current_candidate in self._get_candidate_models(model_dir, model_name):
-                print('Found candidate model at: {}'.format(current_candidate[1]))
-                time.sleep(0.2)
-                delete_now = (delete_existing == 'force')
-                ignore = False
+        must_create_model = True
+        ignore = False
+                    
+        for current_candidate in self._get_candidate_models(model_dir, model_name):
+            print('Found candidate model at: {}'.format(current_candidate[1]))
+            time.sleep(0.2)
+            delete_now = (delete_existing == 'force')
 
+            if delete_existing:
                 if not delete_now:
                     # Keep asking until answer is valid
                     done = False
@@ -114,17 +112,18 @@ class Model(object):
                     rmtree(current_candidate[1])
                     break
 
-                # Use current candidate
-                if not delete_now and not ignore:
-                    must_create_model = False
-                    model_dir = current_candidate[1]
-                    self.model_components = current_candidate[2]
+            # Use current candidate
+            if not delete_now and not ignore:
+                must_create_model = False
+                model_dir = current_candidate[1]
+                self.model_components = current_candidate[2]
+                break
 
-            if ignore:
-                must_create_model = True
-                res = input('There are no more models, do you want to create a new one? [yes/no]: ').lower()
-                if res not in ('y', 'yes'):
-                    raise RuntimeError('Exiting')
+        if ignore:
+            must_create_model = True
+            res = input('There are no more models, do you want to create a new one? [yes/no]: ').lower()
+            if res not in ('y', 'yes'):
+                raise RuntimeError('Exiting')
                 
         if must_create_model:
             original_path = model_dir
@@ -141,7 +140,7 @@ class Model(object):
                     self.model_components = [value, model_name]
                     model_dir = os.path.join(model_dir, value, model_name)
 
-            data = self._get_metadata(model_dir)
+            data = self._get_metadata(original_path)
             data.append({
                 'components': self.model_components,
                 'timestamp': timestamp
