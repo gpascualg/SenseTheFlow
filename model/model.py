@@ -6,6 +6,7 @@ import tqdm
 import tensorflow as tf
 import time
 import datetime
+import json
 from inspect import signature
 from tensorflow.python import debug as tf_debug
 
@@ -82,38 +83,103 @@ class Model(object):
         run_config = run_config \
             .replace(session_config=self.__config)
 
-        if prepend_timestamp or append_timestamp:
-            value = datetime.datetime.fromtimestamp(time.time())
-            value = value.strftime('%Y%m%d-%H%M%S')
+        must_create_model = True
+        model_dir = os.path.normpath(model_dir)
+        model_name = os.path.basename(model_dir)
+        model_dir = model_dir[:-len(model_name)]        
+        
+        if delete_existing:
+            ignore = False
+            
+            for current_candidate in self._get_candidate_models(model_dir, model_name):
+                print('Found candidate model at: {}'.format(current_candidate[1]))
+                time.sleep(0.2)
+                delete_now = (delete_existing == 'force')
+                ignore = False
 
-            if append_timestamp:
-                model_dir = os.path.join(model_dir, value) 
-            else:
-                model_dir = os.path.normpath(model_dir)
-                model_name = os.path.basename(model_dir)
-                model_dir = model_dir[:-len(model_name)]
-                model_dir = os.path.join(model_dir, value, model_name)
+                if not delete_now:
+                    # Keep asking until answer is valid
+                    done = False
+                    while not done:
+                        res = input('Do you want to remove this model (yes), use it now (no) or ignore and display next (ignore)? [yes/no/ignore]: ').lower()
+                        done = (res in ('y', 'yes', 'n', 'no', 'ignore'))
+                        delete_now = (res in ('y', 'yes'))
+                        ignore = res == 'ignore'
+
+                if delete_now:
+                    must_create_model = True
+                    rmtree(current_candidate[1])
+                    break
+
+                # Use current candidate
+                if not delete_now and not ignore:
+                    must_create_model = False
+                    model_dir = current_candidate[1]
+
+            if ignore:
+                must_create_model = True
+                res = input('There are no more models, do you want to create a new one? [yes/no]: ').lower()
+                if res not in ('y', 'yes'):
+                    raise RuntimeError('Exiting')
+                
+        if must_create_model:
+            original_path = model_dir
+            model_components = [model_name]
+            timestamp = time.time()
+
+            if prepend_timestamp or append_timestamp:
+                value = datetime.datetime.fromtimestamp(timestamp)
+                value = value.strftime('%Y%m%d-%H%M%S')
+
+                if append_timestamp:
+                    model_components = [model_name, value]
+                    model_dir = os.path.join(model_dir, model_name, value) 
+                else:
+                    model_components = [value, model_name]
+                    model_dir = os.path.join(model_dir, value, model_name)
+
+            data = self._get_metadata(model_dir)
+            data.append({
+                'components': model_components,
+                'timestamp': timestamp
+            })
+            self._dump_metadata(original_path, data)
 
         # Output some information
         print('Target model directory: {}'.format(model_dir))
 
-        if delete_existing:
-            delete_now = (delete_existing == 'force')
-
-            if not delete_now:
-                # Keep asking until answer is valid
-                done = False
-                while not done:
-                    res = input('Do you really want to delete all models? [yes/no]: ').lower()
-                    done = (res in ('y', 'yes', 'n', 'no'))
-                    delete_now = (res in ('y', 'yes'))
-
-            if delete_now:
-                rmtree(model_dir)
-
         self.__classifier = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=model_dir, config=run_config,
             warm_start_from=warm_start_from, params=params)
+
+    def _get_metadata(self, model_dir):
+        data = []
+        try:
+            with open(os.path.join(model_dir, '.sensetheflow')) as fp:
+                data = json.load(fp)
+        except:
+            pass
+
+        return data
+    
+    def _dump_metadata(self, model_dir, data):
+        with open(os.path.join(model_dir, '.sensetheflow'), 'w') as fp:
+            json.dump(data, fp)
+
+    def _iterate_candidate_models(self, model_dir, model_name):
+        models = self._get_metadata(model_dir)
+        for model in models:
+            if model_name in model['components']:
+                path = os.path.join(model_dir, *model['components'])
+                if os.path.exists(os.path.join(path, 'checkpoint')):
+                    yield model['timestamp'], path
+
+    def _get_candidate_models(self, model_dir, model_name):
+        metadata = os.path.join(model_dir, '.sensetheflow')
+        if not os.path.exists(metadata):
+            return []
+
+        return sorted(self._iterate_candidate_models(model_dir, model_name), reverse=True)
 
     def _add_hook(self, hook):
         self.__callbacks.append(hook)
