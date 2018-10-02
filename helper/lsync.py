@@ -22,10 +22,9 @@ class LSync(object):
 
         # Setup daemon parameters
         source_dir = model.classifier().model_dir
-        self._model_name = os.path.basename(os.path.normpath(source_dir))
-        target_dir = os.path.join(target_folder, self._model_name)
+        target_dir = os.path.join(target_folder, *self._model.model_components)
 
-        logpath = os.path.join(tempfile.gettempdir(), self._model_name + '.lsyncd')
+        logpath = os.path.join(tempfile.gettempdir(), '.'.join(self._model.model_components) + '.lsyncd')
         self._logfile = open(logpath, 'w')
         self._source_dir = os.path.normpath(source_dir)
         self._target_dir = os.path.normpath(target_dir)
@@ -139,7 +138,7 @@ class LSync(object):
                 }}
             """
 
-            settingspath = os.path.join(tempfile.gettempdir(), self._model_name + '.settings')
+            settingspath = os.path.join(tempfile.gettempdir(), '.'.join(self._model.model_components) + '.settings')
             with open(settingspath, 'w') as fp:
                 fp.write(
                     textwrap.dedent(

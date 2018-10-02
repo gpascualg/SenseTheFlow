@@ -87,7 +87,9 @@ class Model(object):
         must_create_model = True
         model_dir = os.path.normpath(model_dir)
         model_name = os.path.basename(model_dir)
-        model_dir = model_dir[:-len(model_name)]        
+        model_dir = model_dir[:-len(model_name)]
+
+        self.model_components = [model_name]
         
         if delete_existing:
             ignore = False
@@ -116,6 +118,7 @@ class Model(object):
                 if not delete_now and not ignore:
                     must_create_model = False
                     model_dir = current_candidate[1]
+                    self.model_components = current_candidate[2]
 
             if ignore:
                 must_create_model = True
@@ -125,7 +128,6 @@ class Model(object):
                 
         if must_create_model:
             original_path = model_dir
-            model_components = [model_name]
             timestamp = time.time()
 
             if prepend_timestamp or append_timestamp:
@@ -133,15 +135,15 @@ class Model(object):
                 value = value.strftime('%Y%m%d-%H%M%S')
 
                 if append_timestamp:
-                    model_components = [model_name, value]
+                    self.model_components = [model_name, value]
                     model_dir = os.path.join(model_dir, model_name, value) 
                 else:
-                    model_components = [value, model_name]
+                    self.model_components = [value, model_name]
                     model_dir = os.path.join(model_dir, value, model_name)
 
             data = self._get_metadata(model_dir)
             data.append({
-                'components': model_components,
+                'components': self.model_components,
                 'timestamp': timestamp
             })
             self._dump_metadata(original_path, data)
@@ -173,7 +175,7 @@ class Model(object):
             if model_name in model['components']:
                 path = os.path.join(model_dir, *model['components'])
                 if os.path.exists(os.path.join(path, 'checkpoint')):
-                    yield model['timestamp'], path
+                    yield model['timestamp'], path, model['components']
 
     def _get_candidate_models(self, model_dir, model_name):
         metadata = os.path.join(model_dir, '.sensetheflow')
