@@ -71,7 +71,12 @@ class ExecutionWrapper(object):
             else:
                 self.__thread.terminate()
             self.__thread.join()
-            self.model.clean()
+            
+            # Only if forced call clean, otherwise it will be
+            # called by the normal flow in the wrapped call
+            if force:
+                self.model.clean()
+
             return True
 
         return False
