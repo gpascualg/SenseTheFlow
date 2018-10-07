@@ -139,7 +139,9 @@ class Model(object):
                 else:
                     self.model_components = [value, model_name]
                     model_dir = os.path.join(model_dir, value, model_name)
-
+            else:
+                model_dir = os.path.join(model_dir, model_name)
+                
             data = self._get_metadata(original_path)
             data.append({
                 'components': self.model_components,
