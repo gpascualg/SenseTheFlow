@@ -22,7 +22,8 @@ class RocksBytes(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), ptr, key_len=self.max_key_size, value_len=value_len)
     
     def iterate(self):
-        self.itr = itr = self.db.iterator()
+        itr = self.db.iterator()
+        self.itrs.append(itr)
 
         if self.skip is not None:
             for i in range(self.skip): itr.next()
@@ -39,8 +40,8 @@ class RocksBytes(RocksWildcard):
             
             itr.next()
 
+        self.itrs.remove(itr)
         itr.close()
-        self.itr = None
 
     def split(self, num_samples):
         assert self.read_only, "Database must be in read only mode"

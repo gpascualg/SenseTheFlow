@@ -39,13 +39,14 @@ class RocksNumpy(RocksWildcard):
         return self.db.write(ctypes.c_char_p(key_str), data, key_len=self.max_key_size, value_len=value_len)
 
     def iterate(self):
-        self.itr = itr = self.db.iterator()
+        itr = self.db.iterator()
+        self.itrs.append(itr)
 
         if self.skip is not None:
             for i in range(self.skip): itr.next()
 
         i = 0
-        while self.itr is not None and itr.valid():
+        while itr.valid():
             ptr, plen = itr.value()
             value = unserialize_numpy((self.ctype * (plen // self.dsize)).from_address(ptr), self.dtype, self.iter_shape)
             yield value.copy()
@@ -56,8 +57,8 @@ class RocksNumpy(RocksWildcard):
 
             itr.next()
 
+        self.itrs.remove(itr)
         itr.close()
-        self.itr = None
 
     def split(self, num_samples):
         assert self.read_only, "Database must be in read only mode"
@@ -97,13 +98,14 @@ class RocksNonConstantNumpy(RocksNumpy):
         return self.db.write(ctypes.c_char_p(key_str), buffer, key_len=self.max_key_size, value_len=total_size)
 
     def iterate(self):
-        self.itr = itr = self.db.iterator()
+        itr = self.db.iterator()
+        self.itrs.append(itr)
 
         if self.skip is not None:
             for i in range(self.skip): itr.next()
 
         i = 0
-        while self.itr is not None and itr.valid():
+        while itr.valid():
             ptr, plen = itr.value()
 
             shape = list((ctypes.c_int * 3).from_address(ptr))
@@ -116,6 +118,6 @@ class RocksNonConstantNumpy(RocksNumpy):
 
             itr.next()
 
+        self.itrs.remove(itr)
         itr.close()
-        self.itr = None
 

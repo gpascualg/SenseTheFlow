@@ -37,8 +37,7 @@ def serialize_numpy(data, dtype):
 
 def unserialize_numpy(data, dtype, shape):
     _, _, dtype, _ = types(dtype)
-    array_ptr = np.ctypeslib.as_array(data)
-    value = np.ctypeslib.as_array(array_ptr).astype(dtype)
+    value = np.ctypeslib.as_array(data).astype(dtype)
 
     if shape is None:
         return value

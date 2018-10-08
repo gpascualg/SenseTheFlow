@@ -50,7 +50,7 @@ class RocksWildcard(object):
         self.last_key = 0
         self.max_key_size = max_key_size
         self.read_only = read_only
-        self.itr = None
+        self.itrs = []
         self.db = None
         self.skip = skip
         self.num_samples = num_samples
@@ -86,9 +86,10 @@ class RocksWildcard(object):
         return str(self.last_key).zfill(self.max_key_size).encode()
 
     def close_iterator(self):
-        if self.itr is not None:
-            self.itr.close()
-            self.itr = None
+        for itr in self.itrs:
+            itr.close()
+            
+        self.itrs = []
 
     def close(self):
         self.close_iterator()
