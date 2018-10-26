@@ -75,6 +75,7 @@ class Model(object):
 
         self.stop_has_been_requested = False
         self.__clean = []
+        self.__clean_once = []
 
         # Set up a RunConfig to only save checkpoints once per training cycle.
         if run_config is None:
@@ -222,9 +223,18 @@ class Model(object):
         assert callable(what), "Argument should be callable"
         self.__clean.append(what)
 
+    def clean_once_fnc(self, what):
+        assert callable(what), "Argument should be callable"
+        self.__clean_once.append(what)
+
     def clean(self):
         for fnc in self.__clean:
             fnc()
+
+        for fnc in self.__clean_once:
+            fnc()
+
+        self.__clean_once = []
 
     def redraw_bars(self, epochs=None, leave=True, force=False):
         for mode, wrappers in self.__tqdm_hooks.items():

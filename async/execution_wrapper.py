@@ -55,7 +55,7 @@ class ExecutionWrapper(object):
 
         # Attach to model instances and clean laters
         SyncModel.instances.append(self)
-        self.model.clean_fnc(lambda: SyncModel.instances.remove(self))
+        self.model.clean_once_fnc(lambda: SyncModel.instances.remove(self))
 
         # Start running now
         self.__thread.start()
