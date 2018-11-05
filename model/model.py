@@ -7,6 +7,7 @@ import tensorflow as tf
 import time
 import datetime
 import json
+import sys
 from inspect import signature
 from tensorflow.python import debug as tf_debug
 
@@ -45,6 +46,12 @@ def _wrap_generator(generator, wrappers, epochs):
     tqdm_wrapper.update_epoch(epochs)
     tqdm_wrapper.done()
 
+def _ask(message, valid):
+    resp = None
+    while resp is None:
+        resp = input(message).lower()
+        resp = resp if (resp in valid) else None
+    return resp
 
 class Model(object):
     instances = []
@@ -92,26 +99,31 @@ class Model(object):
         self.model_components = [model_name]
         must_create_model = True
         ignore = False
-                    
-        for current_candidate in self._get_candidate_models(model_dir, model_name):
+        
+        all_candidates = self._get_candidate_models(model_dir, model_name)
+        num_candidates = len(all_candidates)
+        self.is_using_initialized_model = True
+        
+        for current_candidate in all_candidates:
             print('Found candidate model at: {}'.format(current_candidate[1]))
             time.sleep(0.2)
             delete_now = (delete_existing == 'force')
 
             if delete_existing:
                 if not delete_now:
-                    # Keep asking until answer is valid
-                    done = False
-                    while not done:
-                        res = input('Do you want to remove this model (yes), use it now (no) or ignore and display next (ignore)? [yes/no/ignore]: ').lower()
-                        done = (res in ('y', 'yes', 'n', 'no', 'ignore'))
-                        delete_now = (res in ('y', 'yes'))
-                        ignore = res == 'ignore'
+                    res = _ask('Do you want to remove this model (yes), use it now (no) or ignore and display next (ignore)? [yes/no/ignore]: ', ('y', 'yes', 'n', 'no', 'ignore'))
+                    delete_now = (res in ('y', 'yes'))
+                    ignore = res == 'ignore'
 
                 if delete_now:
                     must_create_model = True
                     rmtree(current_candidate[1])
                     break
+            
+            elif num_candidates > 1:
+                res = _ask('Do you want to use this model (yes) or check next (no)? [yes/no]: ', ('y', 'yes', 'n', 'no'))
+                ignore = res == 'ignore'
+
 
             # Use current candidate
             if not delete_now and not ignore:
@@ -122,9 +134,12 @@ class Model(object):
 
         if ignore:
             must_create_model = True
-            res = input('There are no more models, do you want to create a new one? [yes/no]: ').lower()
+            res = _ask('There are no more models, do you want to create a new one? [yes/no]: ', ('yes', 'y', 'no', 'n'))
             if res not in ('y', 'yes'):
                 raise RuntimeError('Exiting')
+        
+        elif num_candidates == 0:
+            self.is_using_initialized_model = False
                 
         if must_create_model:
             original_path = model_dir
@@ -279,9 +294,15 @@ class Model(object):
     def _execute_prerun_hooks(self, mode):
         for fnc in self.__prerun_hooks:
             fnc(self, mode)
+
+    def _warn_not_initialized(self):
+        if not self.is_using_initialized_model:
+            print('You are using a non-initialized model!', file=sys.stderr)
+            print('Eval/predict results are expected to be random', file=sys.stderr)
     
     def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
         assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
+        self.is_using_initialized_model = True
         self._execute_prerun_hooks(tf.estimator.ModeKeys.TRAIN)
 
         tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
@@ -329,6 +350,7 @@ class Model(object):
                 return
 
     def predict(self, epochs=1, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+        self._warn_not_initialized()
         self._execute_prerun_hooks(tf.estimator.ModeKeys.PREDICT)
         total = self.__data_parser.num(tf.estimator.ModeKeys.PREDICT)
 
@@ -370,6 +392,7 @@ class Model(object):
         
 
     def evaluate(self, epochs=1, eval_callback=None, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
+        self._warn_not_initialized()
         self._execute_prerun_hooks(tf.estimator.ModeKeys.EVAL)
         total = self.__data_parser.num(tf.estimator.ModeKeys.EVAL)
 
