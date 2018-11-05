@@ -1,5 +1,6 @@
 from ..model import Model as SyncModel
 from .execution_wrapper import ExecutionWrapper
+from .parallel_train_eval import ParallelTrainEval
 from .tfhooks import AsyncTaskMode, AsyncTaskHook, create_async_task
 
 import tensorflow as tf
@@ -71,6 +72,14 @@ class Model(SyncModel):
 
     def __stop_callback(self, model, run_context, step):
         run_context.request_stop()
+
+    def _as_sync_model(self):
+        return self.__model
+
+    def train_eval(self, every_n_secs, train_parameters, eval_parameters):
+        context = ParallelTrainEval(self, every_n_secs, train_parameters, eval_parameters)
+        context.start()
+        return context
 
     def save(self, block=True):
         task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN)
