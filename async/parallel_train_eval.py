@@ -1,5 +1,4 @@
 from ..model import Model as SyncModel
-from .model import Model
 from .execution_wrapper import ExecutionWrapper
 from .internals import Thread
 
@@ -8,7 +7,7 @@ import time
 
 class ParallelTrainEval(object):
     def __init__(self, model, every_n_secs, train_parameters, eval_parameters):
-        assert isinstance(model, Model), "Parallel evaluation can only be used with async models"
+        # assert isinstance(model, Model), "Parallel evaluation can only be used with async models"
         assert isinstance(train_parameters, dict), "Train parameters must be a dictionary"
         assert isinstance(eval_parameters, dict), "Eval parameters must be a dictionary"
         
