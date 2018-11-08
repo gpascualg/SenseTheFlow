@@ -18,10 +18,12 @@ class ParallelTrainEval(object):
         self.__eval_parameters = eval_parameters
 
     def _wait_until_next(self):
-        time.sleep(self.__every_n_secs)
-        self.model.save()
-        # We want this to lock! :D
-        self.model._as_sync_model().evaluate(**self.__eval_parameters)
+        while True:
+            time.sleep(self.__every_n_secs)
+            self.model.save()
+            # We want this to lock! :D
+            evaluator = self.model._as_sync_model().evaluate(**self.__eval_parameters)
+            _ = list(evaluator)
 
     def start(self):
         self.__thread = Thread(target=self._wait_until_next)
