@@ -8,5 +8,7 @@ def topk(labels, distances, num_classes, k):
     mask_labels = tf.concat([mask_labels]*k, axis=1)
 
     mask_predictions = tf.one_hot(topk_indices, num_classes)
-    num_matches = tf.reduce_mean(tf.reduce_max(tf.multiply(mask_predictions, mask_labels), axis=1), axis=0)
+    common_elements = tf.multiply(mask_predictions, mask_labels)
+    correct_indices = tf.reduce_max(common_elements, axis=1)
+    num_matches = tf.reduce_mean(correct_indices)
     return num_matches
