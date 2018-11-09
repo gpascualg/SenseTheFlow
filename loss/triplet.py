@@ -137,6 +137,9 @@ def batch_all_triplet_loss(distance_function, labels, embeddings, margin, weight
     
     triplet_loss = tf.reduce_sum(triplet_loss) / (num_positive_triplets + 1e-16)
 
+    if not tf.executing_eagerly():
+        tf.add_to_collection(tf.GraphKeys.LOSSES, triplet_loss)
+
     return triplet_loss, fraction_positive_triplets, pairwise_dist
 
 
@@ -192,5 +195,8 @@ def batch_hard_triplet_loss(distance_function, labels, embeddings, margin, weigh
 
     # Get final mean triplet loss
     triplet_loss = tf.reduce_mean(triplet_loss)
+
+    if not tf.executing_eagerly():
+        tf.add_to_collection(tf.GraphKeys.LOSSES, triplet_loss)
 
     return triplet_loss, pairwise_dist
