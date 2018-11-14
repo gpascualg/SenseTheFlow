@@ -20,7 +20,7 @@ class DataParser(object):
 
     def from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1,
+        skip=None, num_samples=None, batch_size=1, prefetch=None,
         mode=tf.estimator.ModeKeys.TRAIN, **kwargs):
 
         generator = {
@@ -33,7 +33,8 @@ class DataParser(object):
             generator,  parser_fn=parser_fn,
             pre_shuffle=pre_shuffle, post_shuffle=post_shuffle, flatten=flatten, 
             skip=skip, num_samples=num_samples, batch_size=batch_size,
-            mode=mode, num_epochs=num_epochs
+            mode=mode, num_epochs=num_epochs,
+            prefetch=prefetch or min(10, batch_size)
         )
 
         self.__input_fn[mode].append((input_fn, DefaultNamespace(**kwargs)))
@@ -54,7 +55,7 @@ class DataParser(object):
 
     def generator_input_fn(self, generator, mode, parser_fn=None,
         pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1, num_epochs=1):
+        skip=None, num_samples=None, batch_size=1, prefetch=None, num_epochs=1):
 
         dataset = tf.data.Dataset.from_generator(**generator)
 
@@ -111,8 +112,8 @@ class DataParser(object):
             dataset = dataset.batch(batch_size)
 
         # Prefetch to avoid IDLE time
-        if batch_size > 0:
-            dataset = dataset.prefetch(batch_size)
+        if prefetch > 0:
+            dataset = dataset.prefetch(prefetch)
 
         # We are done
         iterator = dataset.make_one_shot_iterator()
