@@ -101,11 +101,8 @@ class DataParser(object):
 
         # Post-parsing shuffle + repeat
         if post_shuffle:
-            if not pre_shuffle:
-                dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
-                    post_shuffle, num_epochs))
-            else:
-                dataset = dataset.shuffle(post_shuffle)
+            dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
+                post_shuffle, num_epochs))
         
         # Create batches
         if not can_fuse_map and batch_size > 0:
