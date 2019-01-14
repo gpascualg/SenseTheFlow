@@ -100,8 +100,7 @@ def decode_np(enc, class_colors_tuple=None, class_colors_hex=None):
         
     num_cls = len(class_colors)
     
-    final = np.sum([np.take(class_colors, enc, axis=0) for cls in range(num_cls)], axis=0)
-    return final
+    return np.take(class_colors, enc, axis=0)
 
 # @ https://github.com/affinelayer/pix2pix-tensorflow/blob/master/pix2pix.py
 def check_image(image):
