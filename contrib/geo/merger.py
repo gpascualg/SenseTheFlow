@@ -1,6 +1,7 @@
 import numpy as np
 
 from ...config import bar
+from .patch import GeoPatch
 
 
 def merge_into_bbox(top_left, tile_size, ratio, reader, load_patch_image):
