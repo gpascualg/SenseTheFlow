@@ -88,10 +88,6 @@ class Model(SyncModel):
         if block:
             task.semaphore.acquire()
 
-    def save_every(self, steps):
-        task = create_async_task(self.__save_callback, AsyncTaskMode.AFTER_RUN, steps=steps, repetitive=True)
-        self.__async_task.push(task)
-
     def stop(self, block=True):
         task = create_async_task(self.__stop_callback, AsyncTaskMode.AFTER_RUN)
         self.__model.stop_has_been_requested = True
