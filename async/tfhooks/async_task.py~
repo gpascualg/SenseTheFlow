@@ -23,7 +23,7 @@ def create_async_task(callback, mode, steps=1, repetitive=False):
     assert mode != AsyncTaskMode.AFTER_CREATE or not repetitive
 
     # Non-repetitive tasks must be executed as soon as pused
-    assert repetitive or (not repetitive and steps == 1)
+    assert not repetitive or steps == 1
 
     task = SimpleNamespace(callback=callback, mode=mode, steps=steps, repetitive=repetitive, semaphore=Semaphore(0))
     return task
