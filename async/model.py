@@ -7,7 +7,7 @@ import tensorflow as tf
 import os
 
 
-class Model(SyncModel):
+class Model(object):
     def __init__(self, *args, **kwargs):
         self.__model = SyncModel(*args, **kwargs)
         self.__async_task = AsyncTaskHook(1, self.__model)
@@ -39,6 +39,9 @@ class Model(SyncModel):
 
         attr = object.__getattribute__(self, name)
         return attr
+
+    def __dir__(self):
+        return dir(self.__model) + object.__dir__(self)
 
     def __enter__(self):
         # Do not add now, we might end up running nothing

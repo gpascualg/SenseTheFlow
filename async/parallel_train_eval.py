@@ -50,4 +50,6 @@ class ParallelTrainEval(object):
             attr = ExecutionWrapper.__getattribute__(self.__train_context, name)
             return attr
 
-        
+    # Autocomplete
+    def __dir__(self):
+        return dir(self.__train_context) + object.__dir__(self)
