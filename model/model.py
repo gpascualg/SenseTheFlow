@@ -3,6 +3,7 @@ import types
 import shutil
 import copy
 import tqdm
+import itertools
 import tensorflow as tf
 import time
 import datetime
@@ -14,6 +15,7 @@ from tensorflow.python import debug as tf_debug
 from . import tfhooks
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
+from .utils import discover
 
 
 def rmtree(path):
@@ -58,9 +60,15 @@ class Model(object):
     
     def __init__(self, model_fn, model_dir, 
         config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False,
-        prepend_timestamp=False, append_timestamp=False):
+        prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False):
 
         os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
+
+        # Post-loading
+        self.__model_fn = model_fn
+        self.__run_config = run_config
+        self.__params = params
+        self.__warm_start_from = warm_start_from
 
         self.__config = config
         self.__init = None
@@ -81,6 +89,7 @@ class Model(object):
         }
 
         self.stop_has_been_requested = False
+        self.__is_loaded = False
         self.__clean = []
         self.__clean_once = []
 
@@ -96,81 +105,25 @@ class Model(object):
         model_name = os.path.basename(model_dir)
         model_dir = model_dir[:-len(model_name)]
 
-        self.model_components = [model_name]
-        must_create_model = True
-        ignore = False
+        # Discover models
+        discover.discover(model_dir, model_name, self._continue_loading, 
+                          prepend_timestamp, append_timestamp, force_ascii_discover)
+
+    def _continue_loading(self, model, is_using_initialized_model):
+        self.__is_loaded = True
+        self.__is_using_initialized_model = is_using_initialized_model
+        self.__model_data = model_data
         
-        all_candidates = self._get_candidate_models(model_dir, model_name)
-        num_candidates = len(all_candidates)
-        self.is_using_initialized_model = True
-        
-        for current_candidate in all_candidates:
-            print('Found candidate model at: {}'.format(current_candidate[1]))
-            time.sleep(0.2)
-            delete_now = (delete_existing == 'force')
-
-            if delete_existing:
-                if not delete_now:
-                    res = _ask('Do you want to remove this model (yes), use it now (no) or ignore and display next (ignore)? [yes/no/ignore]: ', ('y', 'yes', 'n', 'no', 'ignore'))
-                    delete_now = (res in ('y', 'yes'))
-                    ignore = res == 'ignore'
-
-                if delete_now:
-                    must_create_model = True
-                    rmtree(current_candidate[1])
-                    break
-            
-            elif num_candidates > 1:
-                res = _ask('Do you want to use this model (yes) or check next (no)? [yes/no]: ', ('y', 'yes', 'n', 'no'))
-                ignore = res == 'ignore'
-
-
-            # Use current candidate
-            if not delete_now and not ignore:
-                must_create_model = False
-                model_dir = current_candidate[1]
-                self.model_components = current_candidate[2]
-                break
-
-        if ignore:
-            must_create_model = True
-            res = _ask('There are no more models, do you want to create a new one? [yes/no]: ', ('yes', 'y', 'no', 'n'))
-            if res not in ('y', 'yes'):
-                raise RuntimeError('Exiting')
-        
-        elif num_candidates == 0:
-            self.is_using_initialized_model = False
-                
-        if must_create_model:
-            original_path = model_dir
-            timestamp = time.time()
-
-            if prepend_timestamp or append_timestamp:
-                value = datetime.datetime.fromtimestamp(timestamp)
-                value = value.strftime('%Y%m%d-%H%M%S')
-
-                if append_timestamp:
-                    self.model_components = [model_name, value]
-                    model_dir = os.path.join(model_dir, model_name, value) 
-                else:
-                    self.model_components = [value, model_name]
-                    model_dir = os.path.join(model_dir, value, model_name)
-            else:
-                model_dir = os.path.join(model_dir, model_name)
-                
-            data = self._get_metadata(original_path)
-            data.append({
-                'components': self.model_components,
-                'timestamp': timestamp
-            })
-            self._dump_metadata(original_path, data)
-
         # Output some information
-        print('Target model directory: {}'.format(model_dir))
+        print('Target model directory: {}'.format(self.__model_data.model_dir))
 
         self.__classifier = tf.estimator.Estimator(
-            model_fn=model_fn, model_dir=model_dir, config=run_config,
-            warm_start_from=warm_start_from, params=params)
+            model_fn=self.__model_fn, 
+            model_dir=self.__model_data.model_dir, 
+            config=self.__run_config,
+            warm_start_from=self.__warm_start_from, 
+            params=self.__params
+        )
 
     def _get_metadata(self, model_dir):
         data = []
@@ -186,12 +139,15 @@ class Model(object):
         with open(os.path.join(model_dir, '.sensetheflow'), 'w') as fp:
             json.dump(data, fp)
 
+    def _is_path_valid_model(self, path):
+        return os.path.exists(os.path.join(path, 'checkpoint'))
+
     def _iterate_candidate_models(self, model_dir, model_name):
         models = self._get_metadata(model_dir)
         for model in models:
             if model_name in model['components']:
                 path = os.path.join(model_dir, *model['components'])
-                if os.path.exists(os.path.join(path, 'checkpoint')):
+                if self._is_path_valid_model(path):
                     yield model['timestamp'], path, model['components']
 
     def _get_candidate_models(self, model_dir, model_name):
