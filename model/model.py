@@ -10,12 +10,13 @@ import datetime
 import json
 import sys
 from inspect import signature
+from threading import Event
 from tensorflow.python import debug as tf_debug
 
 from . import tfhooks
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
-from .utils import discover
+# from .utils import discover
 
 
 def rmtree(path):
@@ -48,23 +49,19 @@ def _wrap_generator(generator, wrappers, epochs):
     tqdm_wrapper.update_epoch(epochs)
     tqdm_wrapper.done()
 
-def _ask(message, valid):
-    resp = None
-    while resp is None:
-        resp = input(message).lower()
-        resp = resp if (resp in valid) else None
-    return resp
+
 
 class Model(object):
     instances = []
     
-    def __init__(self, model_fn, model_dir, 
-        config=None, run_config=None, warm_start_from=None, params={}, delete_existing=False,
+    def __init__(self, model, model_dir, warm_start_from=None, params={},
         prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False):
 
-        os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
+        self.__model = model
+
 
         # Post-loading
+        self.__setup_fn = None
         self.__model_fn = model_fn
         self.__run_config = run_config
         self.__params = params
@@ -89,7 +86,7 @@ class Model(object):
         }
 
         self.stop_has_been_requested = False
-        self.__is_loaded = False
+        self.__is_loaded = Event()
         self.__clean = []
         self.__clean_once = []
 
@@ -110,52 +107,22 @@ class Model(object):
                           prepend_timestamp, append_timestamp, force_ascii_discover)
 
     def _continue_loading(self, model, is_using_initialized_model):
-        self.__is_loaded = True
+        print('CONTINUE')
+        print(self.__is_loaded.is_set())
+
         self.__is_using_initialized_model = is_using_initialized_model
-        self.__model_data = model_data
+        self.__model_data = model
         
         # Output some information
         print('Target model directory: {}'.format(self.__model_data.model_dir))
+        self.__setup_fn(self)
+        self.__is_loaded.set()
 
-        self.__classifier = tf.estimator.Estimator(
-            model_fn=self.__model_fn, 
-            model_dir=self.__model_data.model_dir, 
-            config=self.__run_config,
-            warm_start_from=self.__warm_start_from, 
-            params=self.__params
-        )
-
-    def _get_metadata(self, model_dir):
-        data = []
-        try:
-            with open(os.path.join(model_dir, '.sensetheflow')) as fp:
-                data = json.load(fp)
-        except:
-            pass
-
-        return data
-    
-    def _dump_metadata(self, model_dir, data):
-        with open(os.path.join(model_dir, '.sensetheflow'), 'w') as fp:
-            json.dump(data, fp)
-
-    def _is_path_valid_model(self, path):
-        return os.path.exists(os.path.join(path, 'checkpoint'))
-
-    def _iterate_candidate_models(self, model_dir, model_name):
-        models = self._get_metadata(model_dir)
-        for model in models:
-            if model_name in model['components']:
-                path = os.path.join(model_dir, *model['components'])
-                if self._is_path_valid_model(path):
-                    yield model['timestamp'], path, model['components']
-
-    def _get_candidate_models(self, model_dir, model_name):
-        metadata = os.path.join(model_dir, '.sensetheflow')
-        if not os.path.exists(metadata):
-            return []
-
-        return sorted(self._iterate_candidate_models(model_dir, model_name), reverse=True)
+    def once_ready(self, setup_fn):
+        if self.__is_loaded.is_set():
+            setup_fn(self)
+        else:
+            self.__setup_fn = setup_fn        
 
     def _add_hook(self, hook):
         self.__callbacks.append(hook)
@@ -206,6 +173,7 @@ class Model(object):
             fnc()
 
         self.__clean_once = []
+        self.__is_loaded.clear()
 
     def redraw_bars(self, epochs=None, leave=True, force=False):
         for mode, wrappers in self.__tqdm_hooks.items():
@@ -218,7 +186,7 @@ class Model(object):
             if callback is not None:
                 callback(results)
 
-        self._add_hook(tf.train.CheckpointSaverHook(
+        self._add_hook(tf.compat.v1.train.CheckpointSaverHook(
             checkpoint_dir=self.classifier().model_dir,
             save_steps=steps
         ))
@@ -252,58 +220,92 @@ class Model(object):
             fnc(self, mode)
 
     def _warn_not_initialized(self):
-        if not self.is_using_initialized_model:
+        if not self.__is_using_initialized_model:
             print('You are using a non-initialized model!', file=sys.stderr)
             print('Eval/predict results are expected to be random', file=sys.stderr)
+
+    # Actual train implementation
+    def _do_train_epoch(self, global_step, input_fn, params, optimizer):
+        with bar() as steps_bar:
+            for x, y in input_fn():
+                global_step.assign(global_step + 1)
+                with tf.GradientTape() as tape:
+                    loss = self.__model_fn(x, y, global_step, tf.estimator.ModeKeys.TRAIN, params)
+
+                watched_vars = tape.watched_variables()
+                print(watched_vars)
+                gradients = tape.gradient(loss, watched_vars)
+                optimizer.apply_gradients(zip(gradients, watched_vars))
+
+                steps_bar.set_description('Loss: {:.2f}'.format(float(loss)))
+                steps_bar.update()
+
+    def _wrap_n_epochs(self, epochs, epochs_per_step, callable, input_fn, params, *args):
+        epochs_bar = bar(total=epochs)
+        global_step = tf.Variable(0, dtype=tf.int32, trainable=False)
+        x = tf.Variable(dtype=input_fn)
+
+        for epoch in range(0, epochs, epochs_per_step):
+            self._do_train_epoch(global_step, input_fn, params, *args)
+            epochs_bar.update(epochs_per_step)
     
-    def train(self, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None):
-        assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) == 1, "One and only one train_fn must be setup through the DataParser"
-        self.is_using_initialized_model = True
+    def train(self, optimizer, epochs, epochs_per_eval=None, eval_callback=None, eval_log=None, eval_summary=None, production=False):
+        assert self.__data_parser.num(tf.estimator.ModeKeys.TRAIN) >= 1, "At least one train_fn must be setup through the DataParser"
+        self.__is_using_initialized_model = True
         self._execute_prerun_hooks(tf.estimator.ModeKeys.TRAIN)
 
-        tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
-        self.__tqdm_hooks[tf.estimator.ModeKeys.TRAIN].append(tqdm_wrapper)
-        tqdm_wrapper.draw()
-
-        if cmd_args.debug:
-            self.__callbacks += [tf_debug.LocalCLIDebugHook()]
-
         train_epochs = epochs_per_eval or epochs
+        train_fn = self._wrap_n_epochs
 
-        for epoch in range(0, epochs, train_epochs):
-            logger = tf.train.LoggingTensorHook(
-                tensors={
-                    'global_step/step': 'global_step'
-                },
-                every_n_iter=10
-            )
+        if production:
+            train_fn = tf.function(train_fn)
 
-            step_counter = tf.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
+        for (input_fn, params) in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
+            train_fn(epochs, train_epochs, self._do_train_epoch, input_fn, params, optimizer)
 
-            for (input_fn, params) in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
-                self.classifier().train(
-                    input_fn=input_fn,
-                    hooks=self.__callbacks + [tqdm_wrapper.create(), logger, step_counter]
-                )
+        # tqdm_wrapper = tfhooks.TqdmWrapper(epochs=epochs)
+        # self.__tqdm_hooks[tf.estimator.ModeKeys.TRAIN].append(tqdm_wrapper)
+        # tqdm_wrapper.draw()
 
-                # Stop request during training
-                if self.stop_has_been_requested:
-                    return
+        # if cmd_args.debug:
+        #     self.__callbacks += [tf_debug.LocalCLIDebugHook()]
 
-            # Update epochs
-            tqdm_wrapper.update_epoch(epoch + train_epochs)
+        # train_epochs = epochs_per_eval or epochs
 
-            # Try to do an eval
-            if isinstance(epochs_per_eval, int):
-                if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
-                    evaluator = self.evaluate(epochs=1, eval_callback=eval_callback, log=eval_log, summary=eval_summary, leave_bar=False)
-                    _ = list(evaluator)  # Force generator to iterate all elements
-                else:
-                    print('You have no `evaluation` dataset')
+        # for epoch in range(0, epochs, train_epochs):
+        #     logger = tf.compat.v1.train.LoggingTensorHook(
+        #         tensors={
+        #             'global_step/step': 'global_step'
+        #         },
+        #         every_n_iter=10
+        #     )
 
-            # Stop request during eval
-            if self.stop_has_been_requested:
-                return
+        #     step_counter = tf.compat.v1.train.StepCounterHook(every_n_steps=10, output_dir=self.classifier().model_dir)
+
+        #     for (input_fn, params) in self.__data_parser.input_fn(mode=tf.estimator.ModeKeys.TRAIN, num_epochs=train_epochs):
+        #         self.classifier().train(
+        #             input_fn=input_fn,
+        #             hooks=self.__callbacks + [tqdm_wrapper.create(), logger, step_counter]
+        #         )
+
+        #         # Stop request during training
+        #         if self.stop_has_been_requested:
+        #             return
+
+        #     # Update epochs
+        #     tqdm_wrapper.update_epoch(epoch + train_epochs)
+
+        #     # Try to do an eval
+        #     if isinstance(epochs_per_eval, int):
+        #         if self.__data_parser.has(tf.estimator.ModeKeys.EVAL):
+        #             evaluator = self.evaluate(epochs=1, eval_callback=eval_callback, log=eval_log, summary=eval_summary, leave_bar=False)
+        #             _ = list(evaluator)  # Force generator to iterate all elements
+        #         else:
+        #             print('You have no `evaluation` dataset')
+
+        #     # Stop request during eval
+        #     if self.stop_has_been_requested:
+        #         return
 
     def predict(self, epochs=1, log=None, summary=None, hooks=None, checkpoint_path=None, leave_bar=True):
         self._warn_not_initialized()
@@ -323,7 +325,7 @@ class Model(object):
             pred_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
-                pred_hooks.append(tf.train.LoggingTensorHook(
+                pred_hooks.append(tf.compat.v1.train.LoggingTensorHook(
                     tensors=params.log(log),
                     every_n_iter=1
                 ))
@@ -366,7 +368,7 @@ class Model(object):
             eval_hooks += [tqdm_wrapper.create()]
 
             if params.log(log) is not None:
-                eval_hooks.append(tf.train.LoggingTensorHook(
+                eval_hooks.append(tf.compat.v1.train.LoggingTensorHook(
                     tensors=params.log(log),
                     every_n_iter=1
                 ))
@@ -413,7 +415,7 @@ class Model(object):
                 "directory: %s" % model_dir)
 
         # We retrieve our checkpoint fullpath
-        checkpoint = tf.train.get_checkpoint_state(model_dir)
+        checkpoint = tf.compat.v1.train.get_checkpoint_state(model_dir)
         input_checkpoint = checkpoint.model_checkpoint_path
         
         # We precise the file fullname of our freezed graph
@@ -426,7 +428,7 @@ class Model(object):
         # We start a session using a temporary fresh Graph
         with tf.Session(graph=tf.Graph()) as sess:
             # We import the meta graph in the current default Graph
-            saver = tf.train.import_meta_graph(input_checkpoint + '.meta', clear_devices=clear_devices)
+            saver = tf.compat.v1.train.import_meta_graph(input_checkpoint + '.meta', clear_devices=clear_devices)
 
             # We restore the weights
             saver.restore(sess, input_checkpoint)

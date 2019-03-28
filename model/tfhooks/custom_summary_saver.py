@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class CustomSummarySaverHook(tf.train.SummarySaverHook):
+class CustomSummarySaverHook(tf.compat.v1.train.SummarySaverHook):
     def __init__(self,
                save_steps=None,
                save_secs=None,
@@ -10,7 +10,7 @@ class CustomSummarySaverHook(tf.train.SummarySaverHook):
                scaffold=None,
                summary_op=None):
 
-        tf.train.SummarySaverHook.__init__(self, 
+        tf.compat.v1.train.SummarySaverHook.__init__(self, 
             save_steps=save_steps,
             save_secs=save_secs,
             output_dir=output_dir,

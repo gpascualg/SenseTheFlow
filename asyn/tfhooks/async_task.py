@@ -29,7 +29,7 @@ def create_async_task(callback, mode, steps=1, repetitive=False):
     return task
     
 
-class AsyncTaskHook(tf.train.SessionRunHook):
+class AsyncTaskHook(tf.compat.v1.train.SessionRunHook):
     """Hook that requests stop at a specified step."""
 
     def __init__(self, num_steps, model):
@@ -68,7 +68,7 @@ class AsyncTaskHook(tf.train.SessionRunHook):
                 self._execute_task(task, session)
 
     def begin(self):
-        self._global_step_tensor = tf.train.get_global_step()
+        self._global_step_tensor = tf.compat.v1.train.get_global_step()
         if self._global_step_tensor is None:
             raise RuntimeError("Global step should be created to use StopAtStepHook.")
 
@@ -79,7 +79,7 @@ class AsyncTaskHook(tf.train.SessionRunHook):
 
     def before_run(self, run_context):  # pylint: disable=unused-argument
         self._execute(AsyncTaskMode.BEFORE_RUN, run_context)
-        return tf.train.SessionRunArgs(self._global_step_tensor)
+        return tf.compat.v1.train.SessionRunArgs(self._global_step_tensor)
 
     def after_run(self, run_context, run_values):
         self._global_step = run_values.results + 1

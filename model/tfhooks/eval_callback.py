@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class EvalCallbackHook(tf.train.SessionRunHook):
+class EvalCallbackHook(tf.compat.v1.train.SessionRunHook):
     def __init__(self, aggregate_callback=None, step_callback=None, fetch_tensors=None):
         self._aggregate_callback = aggregate_callback
         self._step_callback = step_callback
@@ -33,7 +33,7 @@ class EvalCallbackHook(tf.train.SessionRunHook):
 
     def before_run(self, run_context):
         if self._fetch_tensors is not None:
-            return tf.train.SessionRunArgs(self.tensors)
+            return tf.compat.v1.train.SessionRunArgs(self.tensors)
 
     def after_run(self, run_context, run_values):
         if self._step_callback is not None:

@@ -50,7 +50,7 @@ class TqdmWrapper(object):
             self.step_bar.close()
 
 
-class TqdmHook(tf.train.SessionRunHook):
+class TqdmHook(tf.compat.v1.train.SessionRunHook):
     def __init__(self, wrapper, last_step):
         self._wrapper = wrapper
         self._last_step = last_step
@@ -63,7 +63,7 @@ class TqdmHook(tf.train.SessionRunHook):
         self._forced_update = True
 
     def begin(self):
-        self._global_step_tensor = tf.train.get_global_step()
+        self._global_step_tensor = tf.compat.v1.train.get_global_step()
         if self._global_step_tensor is None:
             raise RuntimeError("Global step should be created to use StopAtStepHook.")
 
@@ -72,7 +72,7 @@ class TqdmHook(tf.train.SessionRunHook):
 
     def before_run(self, run_context):  # pylint: disable=unused-argument
         loss = [x for x in tf.get_collection(tf.GraphKeys.LOSSES)]
-        return tf.train.SessionRunArgs(loss + [self._global_step_tensor])
+        return tf.compat.v1.train.SessionRunArgs(loss + [self._global_step_tensor])
 
     def after_run(self, run_context, run_values):
         loss, global_step = sum(run_values.results[:-1]), run_values.results[-1]

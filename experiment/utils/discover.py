@@ -1,5 +1,7 @@
 import datetime
 import itertools
+import json
+import os
 import time
 from types import SimpleNamespace
 
@@ -23,7 +25,7 @@ def _dump_metadata(model_dir, data):
     with open(os.path.join(model_dir, '.sensetheflow'), 'w') as fp:
         json.dump(data, fp)
 
-def create_model(model_dir, model_name, prepend_timestamp, append_timestamp):
+def _create_model(model_dir, model_name, prepend_timestamp, append_timestamp):
     assert not (prepend_timestamp and append_timestamp), "Timestamp can either be appended, prepended or none of them, but not both"
     
     original_path = model_dir
@@ -48,9 +50,9 @@ def create_model(model_dir, model_name, prepend_timestamp, append_timestamp):
         'timestamp': timestamp
     }
 
-    data = _get_metadata(model_dir)
+    data = _get_metadata(original_path)
     data += [model]
-    _dump_metadata(model_dir, data)
+    _dump_metadata(original_path, data)
 
     return SimpleNamespace(
         model_dir=model_dir,
@@ -62,38 +64,47 @@ def _is_path_valid_model(path):
 
 def _iterate_candidate_models(model_dir, model_name):
     for model in _get_metadata(model_dir):
-        if model_name in model['components']:
-            path = os.path.join(model_dir, *model['components'])
-            if _is_path_valid_model(path):
-                yield SimpleNamespace(
-                    model_dir=path,
-                    **model
-                )
+        if model_name not in model['components']:
+            continue
+        
+        path = os.path.join(model_dir, *model['components'])
+        if not _is_path_valid_model(path):
+            continue
+
+        yield SimpleNamespace(
+            model_dir=path,
+            **model
+        )
 
 def _get_candidate_models(model_dir, model_name):
     model_as_is = []
     initial_model_path = os.path.join(model_dir, model_name)
 
     if _is_path_valid_model(initial_model_path):
-        model_as_is = [SimpleNamespace(
+        model_as_is = SimpleNamespace(
             model_dir=initial_model_path,
             timestamp=time.time(),
             components=[model_name]
-        )]
+        )
 
     models = itertools.chain(
-        model_as_is, 
-        _iterate_candidate_models(model_dir, model_name)
+        (model_as_is,), 
+        (x for x in _iterate_candidate_models(model_dir, model_name) if x.model_dir != model_as_is.model_dir)
     )
 
-    return sorted(models, reverse=True, key=lambda x: x.timestamp)
-
+    # Might be empty
+    try:
+        return sorted(models, reverse=True, key=lambda x: x.timestamp)
+    except:
+        return []
 
 def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp, candidates, on_discovered):
     import ipywidgets as widgets
     from IPython.display import display
 
-    candidates = [('/'.join(x.components), x) for x in candidates]
+    candidates = [['/'.join(x.components), x] for x in candidates]
+    candidates[0][0] += ' *'
+
     select = widgets.Select(
         options=[
             ('-- Select a model --', None),
@@ -112,7 +123,7 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
                 rmtree(candidates[0].model_dir)
 
             if change['new'] in (1, 2):
-                model = iscover.create_model(
+                model = _create_model(
                     model_dir, 
                     model_name, 
                     prepend_timestamp,
@@ -131,11 +142,11 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     # Listen for changes
     select.observe(on_change)
 
-def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, force_ascii=False):
+def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False):
     candidates = _get_candidate_models(model_dir, model_name)
 
     if not candidates:
-        model = discover.create_model(
+        model = _create_model(
             model_dir, 
             model_name, 
             prepend_timestamp,
@@ -194,7 +205,7 @@ def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_tim
             raise RuntimeError('Exiting')
                 
     if must_create_model:
-        model = discover.create_model(
+        model = _create_model(
             model_dir, 
             model_name, 
             prepend_timestamp,

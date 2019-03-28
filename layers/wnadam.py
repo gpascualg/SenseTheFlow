@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class WNAdam(tf.train.Optimizer):
+class WNAdam(tf.compat.v1.train.Optimizer):
     def __init__(self, learning_rate, global_step, beta1=0.9, use_locking=False, name='WNAdam'):
         super(WNAdam, self).__init__(use_locking, name)
         self._learning_rate = learning_rate

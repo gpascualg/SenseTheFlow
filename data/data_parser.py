@@ -41,21 +41,15 @@ class DataParser(object):
         
         return self
 
-    def train_from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
-        pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1, prefetch=None, **kwargs):
+    def train_from_generator(self, *args, **kwargs):
         self.from_generator(*args, mode=tf.estimator.ModeKeys.TRAIN, **kwargs)
         return self
     
-    def eval_from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
-        pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1, prefetch=None, **kwargs):
+    def eval_from_generator(self, *args, **kwargs):
         self.from_generator(*args, mode=tf.estimator.ModeKeys.EVAL, **kwargs)
         return self
         
-    def predict_from_generator(self, generator, output_types, output_shapes=None, parser_fn=None,
-        pre_shuffle=False, post_shuffle=False, flatten=False, 
-        skip=None, num_samples=None, batch_size=1, prefetch=None, **kwargs):
+    def predict_from_generator(self, *args, **kwargs):
         self.from_generator(*args, mode=tf.estimator.ModeKeys.PREDICT, **kwargs)
         return self
 
@@ -119,14 +113,7 @@ class DataParser(object):
             dataset = dataset.prefetch(prefetch)
 
         # We are done
-        iterator = dataset.make_one_shot_iterator()
-
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            features = iterator.get_next()
-            return features
-        
-        features, labels = iterator.get_next()
-        return features, labels
+        return dataset
 
     def input_fn(self, mode, num_epochs):
         assert bool(self.__input_fn[mode])
