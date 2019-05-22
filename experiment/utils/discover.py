@@ -8,6 +8,13 @@ from types import SimpleNamespace
 from ...config import is_jupyter
 
 
+def _ask(message, valid):
+    resp = None
+    while resp is None:
+        resp = input(message).lower()
+        resp = resp if (resp in valid) else None
+    return resp
+
 def _get_metadata( model_dir):
         data = []
         try:

@@ -1,17 +1,18 @@
 import tempfile
 import os
 
-from .data import DataType, FetchMethod, UriType
+from threading import Thread
+
+from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
+from .data import DataType, FetchMethod, UriType
 from .utils import discover
+from .mode import Mode
 
 
-def _ask(message, valid):
-    resp = None
-    while resp is None:
-        resp = input(message).lower()
-        resp = resp if (resp in valid) else None
-    return resp
+def default_config(self):
+    gpu_options = tf.GPUOptions(allow_growth=True)
+    return tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
 
 class Experiment(object):
     Instances = {}
@@ -89,7 +90,7 @@ class Experiment(object):
 
         return self.__gpu
 
-    def get_model_directory(self):
+    def get_persistant_path(self):
         if not self.__is_remote_execution:
             for data in self.__data:
                 if data.UriType == UriType.PERSISTENT:
@@ -97,8 +98,15 @@ class Experiment(object):
 
         return self.__persistent_path
 
+    def get_model_directory(self):
+        if not self.__is_remote_execution:
+            if self.__model_components is not None:
+                return self.__model_components.model_dir
+            
+        return self.get_persistant_path()        
+
     def run_local(self, callback, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False):
-        model_dir = os.path.normpath(self.get_model_directory())
+        model_dir = os.path.normpath(self.get_persistant_path())
         model_name = os.path.basename(model_dir)
         model_dir = model_dir[:-len(model_name)]
 
@@ -117,3 +125,137 @@ class Experiment(object):
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
 
+    def __call__(self, *args, **kwargs):
+        assert self.__model is not None, "Model is not configured"
+        return self.__model(*args, **kwargs)
+
+    def train(self, dataset, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+        run = ExperimentRun(self, Mode.TRAIN)
+        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=checkpoint_steps, 
+                summary_steps=summary_steps, hooks=hooks)
+
+    def eval(self, dataset, epochs=1, config=None, summary_steps=100, hooks=()):
+        run = ExperimentRun(self, Mode.EVAL)
+        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=None, 
+                summary_steps=summary_steps, hooks=hooks)
+
+    def test(self, dataset, epochs=1, config=None, summary_steps=100, hooks=()):
+        run = ExperimentRun(self, Mode.TEST)
+        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=None, 
+                summary_steps=summary_steps, hooks=hooks)
+
+class ExperimentOutput(object):
+    def __init__(self, _sentinel=None, outputs=None, train_op=None, loss=None):
+        assert _sentinel is None, "Please use named arguments, outputs=x, etc."
+        self.outputs = outputs
+        self.train_op = train_op
+        self.loss = loss
+        self.summaries = tf.summary.merge_all()
+
+    def _as_list(self):
+        return (self.outputs, self.train_op, self.loss, self.summaries)
+
+    def get_feed(self):
+        return [x for x in self._as_list() if x is not None]
+
+    def format_outputs(self, outputs):
+        names = ['outputs', 'train_op', 'loss', 'summaries']
+        names = [names[i] for i, x in enumerate(self._as_list()) if x is not None]
+
+        return ExperimentOutput(**{
+            name: value for name, value in zip(names, outputs)
+        })
+
+class ExperimentHook(obect):
+    def __init__(self, steps, callback, concurrent=True):
+        self.steps = steps
+        self.__callback = callback
+        self.__concurrent = concurrent
+
+    def __call__(self, step, output):
+        if self.__concurrent:
+            thread = Thread(target=save_plots, args=(step, output))
+            thread.start()
+        else:
+            self.__callback(step, output)
+
+class ExperimentRun(object):
+    def __init__(self, experiment, mode):
+        self.experiment = experiment
+        self.mode = mode
+
+    def run(self, dataset, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
+            with tf.Session(config=config or default_config()) as sess:
+                # Create step and dataset iterator
+                global_step = tf.train.get_or_create_global_step()
+                itr = dataset.make_one_shot_iterator()
+
+                # Test has no y
+                if self.mode == Mode.TEST:
+                    x = itr.get_next()
+                    y = None
+                else:
+                    x, y = itr.get_next()
+                
+                # Input tensors to control deps
+                input_tensors = []
+                for v in (x, y):
+                    if isinstance(v, (list, tuple)):
+                        input_tensors += v
+
+                    if isinstance(v, dict):
+                        input_tensors += list(x.values())
+
+                # Get outputs from model
+                with tf.control_dependencies(input_tensors):
+                    outputs = self.experiment(x, y)
+                    assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
+        
+                # Prep summaries and checkpoints
+                model_dir = self.experiment.get_model_directory()
+                writer = tf.summary.FileWriter(os.path.join(model_dir, self.mode.value), sess.graph)
+        
+                # Checkpoints
+                saver = tf.train.Saver(filename=os.path.join(model_dir, 'model.ckpt'))
+                
+                # Run once
+                sess.run(tf.global_variables_initializer())
+                
+                # Restore if there is anything to restore from
+                ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
+                if ckpt is not None:
+                    saver.restore(sess, ckpt.model_checkpoint_path)
+
+                # First run to fix/update steps
+                first = True
+    
+                # Up to epochs
+                for epoch in bar(range(epochs)):
+                    try:
+                        with bar() as tqbar:
+                            while True:
+                                step, *run_outputs = sess.run([global_step, *outputs.get_feed()])
+                                run_outputs = outputs.format_outputs(run_outputs)
+                                
+                                tqbar.set_description('Loss: {:.2f}'.format(run_outputs.loss or '?'))
+                                tqbar.update(1 if not first else step)
+                                first = False
+
+                                if checkpoint_steps is not None and step % checkpoint_steps == 0:
+                                    saver.save(
+                                        sess,
+                                        os.path.join(model_dir, 'model.ckpt'),
+                                        global_step=global_step
+                                    )
+
+                                if summary_steps is not None and step % summary_steps == 0:
+                                    writer.add_summary(run_outputs.summaries, step)
+
+                                for hook in hooks:
+                                    if step % hook.steps == 0:
+                                        hook(step, run_outputs)
+
+                except tf.errors.OutOfRangeError:
+                    # It's ok, one epoch done
+                    pass
