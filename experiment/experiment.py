@@ -14,9 +14,19 @@ def _ask(message, valid):
     return resp
 
 class Experiment(object):
-    Current = None
+    Instances = {}
+
+    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None):
+        try:
+            instance = Experiment.Instances[experiment_name]
+        except:
+            instance = object.__new__(cls)
+            Experiment.Instances[experiment_name] = instance
+
+        return instance
     
-    def __init__(self, model, on_data_ready=None, before_run=None, on_stop=None):
+    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None):
+        print("INIT {}".format(model))
         # Vars
         self.__model = model
         self.__data = []
@@ -61,18 +71,18 @@ class Experiment(object):
             self.__persistent_path = data.LocalUri
         
         if self.__on_data_ready:
-            self.__on_data_ready(self.__model, data)
+            self.__on_data_ready(self, self.__model, data)
 
     def before_run(self):
         if self.__before_run:
-            self.__before_run(self.__model)
+            self.__before_run(self, self.__model)
 
     def run(self):
-        self.__on_run(self.__model)
+        self.__on_run(self, self.__model)
 
     def stop(self):
         if self.__on_stop:
-            self.__on_stop(self.__model)
+            self.__on_stop(self, self.__model)
 
     def get_gpu(self):
         assert self.__gpu is not None, "Got an invalid GPU"
@@ -102,19 +112,8 @@ class Experiment(object):
     def _continue_loading(self, callback, model, is_using_initialized_model):
         self.__model_components = model
         self.__is_using_initialized_model = is_using_initialized_model
-        callback()
+        callback(self)
 
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
-
-    def __enter__(self):
-        assert Experiment.Current is None, "Only one experiment might be setup per session"
-        Experiment.Current = self
-
-        # Probably return a subclass "ExperimentImpl" that encapsulates all
-        # execution related methods
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        Experiment.Current = None
 
