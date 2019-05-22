@@ -17,7 +17,7 @@ def default_config(self):
 class Experiment(object):
     Instances = {}
 
-    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None):
+    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None):
         try:
             instance = Experiment.Instances[experiment_name]
         except:
@@ -26,21 +26,26 @@ class Experiment(object):
 
         return instance
     
-    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None):
+    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None):
         print("INIT {}".format(model))
         # Vars
         self.__model = model
         self.__data = []
         self.__gpu = None
-        self.__temp_path = tempfile.TemporaryDirectory()
-        self.__persistent_path = self.__temp_path.name
-        self.__is_remote_execution = False
+
+        # Predefined path
+        if persistent_path is None:
+            self.__temp_path = tempfile.TemporaryDirectory()
+            self.__persistent_path = self.__temp_path.name
+        else:
+            self.add_data(FetchMethod.COPY, UriType.PERSISTENT, persistent_path)
 
         # Discoverable
         self.__model_components = None
         self.__is_using_initialized_model = False
 
         # Callbacks
+        self.__is_remote_execution = False
         self.__on_run = None
         self.__on_data_ready = on_data_ready
         self.__before_run = before_run
