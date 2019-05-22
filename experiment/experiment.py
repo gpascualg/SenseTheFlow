@@ -1,5 +1,6 @@
 import tempfile
 import os
+import tensorflow as tf
 
 from threading import Thread
 
@@ -10,7 +11,7 @@ from .utils import discover
 from .mode import Mode
 
 
-def default_config(self):
+def default_config():
     gpu_options = tf.GPUOptions(allow_growth=True)
     return tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
 
@@ -134,19 +135,19 @@ class Experiment(object):
         assert self.__model is not None, "Model is not configured"
         return self.__model(*args, **kwargs)
 
-    def train(self, dataset, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def train(self, dataset_fn, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.TRAIN)
-        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=checkpoint_steps, 
+        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=checkpoint_steps, 
                 summary_steps=summary_steps, hooks=hooks)
 
-    def eval(self, dataset, epochs=1, config=None, summary_steps=100, hooks=()):
+    def eval(self, dataset_fn, epochs=1, config=None, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.EVAL)
-        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=None, 
+        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
 
-    def test(self, dataset, epochs=1, config=None, summary_steps=100, hooks=()):
-        run = ExperimentRun(self, Mode.TEST)
-        run.run(dataset, epochs=epochs, config=config, checkpoint_steps=None, 
+    def test(self, dataset_fn, epochs=1, config=None, summary_steps=100, hooks=()):
+        run = ExperimentRun(self, Mode.PREDICT)
+        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
 
 class ExperimentOutput(object):
@@ -155,49 +156,53 @@ class ExperimentOutput(object):
         self.outputs = outputs
         self.train_op = train_op
         self.loss = loss
-        self.summaries = tf.summary.merge_all()
 
     def _as_list(self):
-        return (self.outputs, self.train_op, self.loss, self.summaries)
+        return (self.outputs, self.train_op, self.loss)
 
     def get_feed(self):
         return [x for x in self._as_list() if x is not None]
 
     def format_outputs(self, outputs):
-        names = ['outputs', 'train_op', 'loss', 'summaries']
+        names = ['outputs', 'train_op', 'loss']
         names = [names[i] for i, x in enumerate(self._as_list()) if x is not None]
 
         return ExperimentOutput(**{
             name: value for name, value in zip(names, outputs)
         })
 
-class ExperimentHook(obect):
+class ExperimentHook(object):
     def __init__(self, steps, callback, concurrent=True):
         self.steps = steps
+        self.tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
 
-    def __call__(self, step, output):
+    def __call__(self, step, *args):
         if self.__concurrent:
-            thread = Thread(target=save_plots, args=(step, output))
+            thread = Thread(target=self.__callback, args=(step, *args))
             thread.start()
         else:
-            self.__callback(step, output)
+            self.__callback(step, *args)
+
+    def needs(self, tensor):
+        self.tensors.append(tensor)
 
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
         self.experiment = experiment
         self.mode = mode
 
-    def run(self, dataset, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def run(self, dataset_fn, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
                 global_step = tf.train.get_or_create_global_step()
+                dataset = dataset_fn()
                 itr = dataset.make_one_shot_iterator()
 
                 # Test has no y
-                if self.mode == Mode.TEST:
+                if self.mode == Mode.PREDICT:
                     x = itr.get_next()
                     y = None
                 else:
@@ -219,6 +224,7 @@ class ExperimentRun(object):
         
                 # Prep summaries and checkpoints
                 model_dir = self.experiment.get_model_directory()
+                merged = tf.summary.merge_all()
                 writer = tf.summary.FileWriter(os.path.join(model_dir, self.mode.value), sess.graph)
         
                 # Checkpoints
@@ -234,33 +240,61 @@ class ExperimentRun(object):
 
                 # First run to fix/update steps
                 first = True
+
+                # Checkpoints?
+                hooks = list(hooks)
+                if checkpoint_steps is not None:
+                    checkpoint_hook = ExperimentHook(
+                        steps=checkpoint_steps,
+                        callback=lambda step: saver.save(sess, os.path.join(model_dir, 'model.ckpt'), global_step=step),
+                        concurrent=False
+                    )
+                    hooks.append(checkpoint_hook)
     
+                # Summaries?
+                if summary_steps is not None:
+                    summaries_hook = ExperimentHook(
+                        steps=summary_steps,
+                        callback=lambda step, merged: writer.add_summary(merged, step)
+                    )
+                    summaries_hook.needs(merged)
+                    hooks.append(summaries_hook)
+
+
                 # Up to epochs
+                step = -1
                 for epoch in bar(range(epochs)):
                     try:
                         with bar() as tqbar:
                             while True:
-                                step, *run_outputs = sess.run([global_step, *outputs.get_feed()])
-                                run_outputs = outputs.format_outputs(run_outputs)
+                                # Standard requested tensors
+                                feed = [global_step, outputs.train_op, outputs.loss]
+
+                                # Other requests of hooks
+                                extra_inputs = 0
+                                for hook in hooks:
+                                    if (step + 1) % hook.steps == 0:
+                                        feed += [hook.tensors]
+                                        extra_inputs += 1
                                 
-                                tqbar.set_description('Loss: {:.2f}'.format(run_outputs.loss or '?'))
+                                # Run session
+                                step, _, loss, *hooks_output = sess.run(feed)
+                                
+                                # Update bar
+                                tqbar.set_description('Loss: {:.2f}'.format(loss or '?'))
                                 tqbar.update(1 if not first else step)
                                 first = False
 
-                                if checkpoint_steps is not None and step % checkpoint_steps == 0:
-                                    saver.save(
-                                        sess,
-                                        os.path.join(model_dir, 'model.ckpt'),
-                                        global_step=global_step
-                                    )
-
-                                if summary_steps is not None and step % summary_steps == 0:
-                                    writer.add_summary(run_outputs.summaries, step)
-
+                                # Call all hooks
+                                idx = 0
                                 for hook in hooks:
                                     if step % hook.steps == 0:
-                                        hook(step, run_outputs)
+                                        if hook.tensors:
+                                            hook(step, *hooks_output[idx])
+                                            idx += 1
+                                        else:
+                                            hook(step)
 
-                except tf.errors.OutOfRangeError:
-                    # It's ok, one epoch done
-                    pass
+                    except tf.errors.OutOfRangeError:
+                        # It's ok, one epoch done
+                        pass
