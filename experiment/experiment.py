@@ -173,12 +173,18 @@ class ExperimentOutput(object):
 
 class ExperimentHook(object):
     def __init__(self, steps, callback, concurrent=True):
-        self.steps = steps
+        self.__steps = steps
         self.tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
+        self.__now = False
+
+    def ready(self, step):
+        return self.__now or (step % self.__steps) == 0
 
     def __call__(self, step, *args):
+        self.__now = False
+
         if self.__concurrent:
             thread = Thread(target=self.__callback, args=(step, *args))
             thread.start()
@@ -188,10 +194,32 @@ class ExperimentHook(object):
     def needs(self, tensor):
         self.tensors.append(tensor)
 
+    def trigger(self):
+        self.__now = True
+
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
         self.experiment = experiment
         self.mode = mode
+
+        # To allow execution re-attaching
+        self.__steps_bar = None
+        self.__step = -1
+
+        # Trigger hook right now
+        self.__checkpoint_hook = None
+        self.__summaries_hook = None
+
+    def reattach(self):
+        if self.__steps_bar is not None:
+            self.__steps_bar.close()
+        
+        self.__steps_bar = bar()
+        self.__steps_bar.update(self.__step)
+
+    def save(self):
+        assert self.__checkpoint_hook is not None, "First run the experiment"
+        self.__checkpoint_hook.trigger()
 
     def run(self, dataset_fn, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
@@ -238,63 +266,59 @@ class ExperimentRun(object):
                 if ckpt is not None:
                     saver.restore(sess, ckpt.model_checkpoint_path)
 
-                # First run to fix/update steps
-                first = True
-
                 # Checkpoints?
                 hooks = list(hooks)
                 if checkpoint_steps is not None:
-                    checkpoint_hook = ExperimentHook(
+                    self.__checkpoint_hook = ExperimentHook(
                         steps=checkpoint_steps,
                         callback=lambda step: saver.save(sess, os.path.join(model_dir, 'model.ckpt'), global_step=step),
                         concurrent=False
                     )
-                    hooks.append(checkpoint_hook)
+                    hooks.append(self.__checkpoint_hook)
     
                 # Summaries?
                 if summary_steps is not None:
-                    summaries_hook = ExperimentHook(
+                    self.__summaries_hook = ExperimentHook(
                         steps=summary_steps,
                         callback=lambda step, merged: writer.add_summary(merged, step)
                     )
-                    summaries_hook.needs(merged)
-                    hooks.append(summaries_hook)
+                    self.__summaries_hook.needs(merged)
+                    hooks.append(self.__summaries_hook)
 
+                # First run to fix/update steps
+                first = True
 
                 # Up to epochs
-                step = -1
                 for epoch in bar(range(epochs)):
+                    self.__steps_bar = bar()
+
                     try:
-                        with bar() as tqbar:
-                            while True:
-                                # Standard requested tensors
-                                feed = [global_step, outputs.train_op, outputs.loss]
+                        while True:
+                            # Standard requested tensors
+                            feed = [global_step, outputs.train_op, outputs.loss]
 
-                                # Other requests of hooks
-                                extra_inputs = 0
-                                for hook in hooks:
-                                    if (step + 1) % hook.steps == 0:
-                                        feed += [hook.tensors]
-                                        extra_inputs += 1
-                                
-                                # Run session
-                                step, _, loss, *hooks_output = sess.run(feed)
-                                
-                                # Update bar
-                                tqbar.set_description('Loss: {:.2f}'.format(loss or '?'))
-                                tqbar.update(1 if not first else step)
-                                first = False
+                            # Other requests of hooks
+                            extra_inputs = 0
+                            for hook in hooks:
+                                if hook.ready(self.__step + 1):
+                                    feed += [hook.tensors]
+                                    extra_inputs += 1
+                            
+                            # Run session
+                            self.__step, _, loss, *hooks_output = sess.run(feed)
+                            
+                            # Update bar
+                            self.__steps_bar.set_description('Loss: {:.2f}'.format(loss or '?'))
+                            self.__steps_bar.update(1 if not first else self.__step)
+                            first = False
 
-                                # Call all hooks
-                                idx = 0
-                                for hook in hooks:
-                                    if step % hook.steps == 0:
-                                        if hook.tensors:
-                                            hook(step, *hooks_output[idx])
-                                            idx += 1
-                                        else:
-                                            hook(step)
+                            # Call all hooks
+                            for idx, hook in enumerate(hooks):
+                                if hook.ready(self.__step):
+                                    hook(self.__step, *hooks_output[idx])
 
                     except tf.errors.OutOfRangeError:
                         # It's ok, one epoch done
                         pass
+                    finally:
+                        self.__steps_bar.close()

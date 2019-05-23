@@ -93,10 +93,11 @@ def _get_candidate_models(model_dir, model_name):
             timestamp=time.time(),
             components=[model_name]
         )
+        model_as_is = [model_as_is]
 
     models = itertools.chain(
-        (model_as_is,), 
-        (x for x in _iterate_candidate_models(model_dir, model_name) if x.model_dir != model_as_is.model_dir)
+        model_as_is,
+        (x for x in _iterate_candidate_models(model_dir, model_name) if not model_as_is or x.model_dir != model_as_is.model_dir)
     )
 
     # Might be empty
@@ -129,6 +130,8 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
             if change['new'] == 2 and candidates:
                 rmtree(candidates[0].model_dir)
 
+            change['owner'].close()
+
             if change['new'] in (1, 2):
                 model = _create_model(
                     model_dir, 
@@ -139,8 +142,6 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
                 on_discovered(model, False)
             else:
                 on_discovered(change['new'], True)
-
-            change['owner'].close()
 
     # Display widgets
     display(select)
