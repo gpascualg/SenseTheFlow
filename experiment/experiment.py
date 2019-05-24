@@ -34,7 +34,7 @@ class Experiment(object):
         self.params = copy.copy(params or {})
 
         # Issue a warning if no parameters are set
-        if not self.__is_using_initialized_model:
+        if not params:
             print("[WARNING] Defaulting to empty {} parameters", file=sys.stderr)
 
         # Private variables
@@ -141,7 +141,7 @@ class Experiment(object):
 
     def __call__(self):
         assert self.__model_cls is not None, "Model is not configured"
-        return self.__model_cls(self.experiment.params)
+        return self.__model_cls(self.params)
 
     def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.TRAIN)
@@ -170,20 +170,6 @@ class ExperimentOutput(object):
         self.outputs = outputs
         self.train_op = train_op
         self.loss = loss
-
-    def _as_list(self):
-        return (self.outputs, self.train_op, self.loss)
-
-    def get_feed(self):
-        return [x for x in self._as_list() if x is not None]
-
-    def format_outputs(self, outputs):
-        names = ['outputs', 'train_op', 'loss']
-        names = [names[i] for i, x in enumerate(self._as_list()) if x is not None]
-
-        return ExperimentOutput(**{
-            name: value for name, value in zip(names, outputs)
-        })
 
 class ExperimentHook(object):
     def __init__(self, steps, callback, concurrent=True):
@@ -283,7 +269,7 @@ class ExperimentRun(object):
                 sess.run(tf.global_variables_initializer())
 
                 # Warm start hooks
-                warm_start_fn and warm_start_fn(self, self.experiment, model, sess)
+                warm_start_fn and warm_start_fn(self.experiment, model, sess)
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
