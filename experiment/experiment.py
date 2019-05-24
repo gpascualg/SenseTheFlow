@@ -305,7 +305,7 @@ class ExperimentRun(object):
                     try:
                         while True:
                             # Other requests of hooks
-                            hooks_feed = [hooks.tensors for hook in hooks if hook.ready(self.__step + 1)]
+                            hooks_feed = [hook.tensors for hook in hooks if hook.ready(self.__step + 1)]
 
                             # Run session
                             self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
