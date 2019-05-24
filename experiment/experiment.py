@@ -19,7 +19,7 @@ def default_config():
 class Experiment(object):
     Instances = {}
 
-    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+    def __new__(cls, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
         try:
             instance = Experiment.Instances[experiment_name]
         except:
@@ -28,7 +28,7 @@ class Experiment(object):
 
         return instance
     
-    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+    def __init__(self, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
         # Params can be modified on any of the callbacks without affecting
         # the original object
         self.params = copy.copy(params or {})
@@ -38,7 +38,7 @@ class Experiment(object):
             print("[WARNING] Defaulting to empty {} parameters", file=sys.stderr)
 
         # Private variables
-        self.__model = model
+        self.__model_cls = model_cls
         self.__data = []
         self.__gpu = None
 
@@ -86,18 +86,18 @@ class Experiment(object):
             self.__persistent_path = data.LocalUri
         
         if self.__on_data_ready:
-            self.__on_data_ready(self, self.__model, data)
+            self.__on_data_ready(self, data)
 
     def before_run(self):
         if self.__before_run:
-            self.__before_run(self, self.__model)
+            self.__before_run(self)
 
     def run(self):
-        self.__on_run(self, self.__model)
+        self.__on_run(self)
 
     def stop(self):
         if self.__on_stop:
-            self.__on_stop(self, self.__model)
+            self.__on_stop(self)
 
     def get_gpu(self):
         assert self.__gpu is not None, "Got an invalid GPU"
@@ -134,14 +134,14 @@ class Experiment(object):
     def _continue_loading(self, callback, model, is_using_initialized_model):
         self.__model_components = model
         self.__is_using_initialized_model = is_using_initialized_model
-        callback(self, self.__model)
+        callback(self)
 
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
 
-    def __call__(self, *args, **kwargs):
-        assert self.__model is not None, "Model is not configured"
-        return self.__model(*args, **kwargs)
+    def __call__(self):
+        assert self.__model_cls is not None, "Model is not configured"
+        return self.__model_cls(self.experiment.params)
 
     def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.TRAIN)
@@ -266,7 +266,8 @@ class ExperimentRun(object):
 
                 # Get outputs from model
                 with tf.control_dependencies(input_tensors):
-                    outputs = self.experiment(x, y, self.mode, self.experiment.params)
+                    model = self.experiment()
+                    outputs = model(x, y, self.mode, self.experiment.params)
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
                     assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
 
@@ -282,7 +283,7 @@ class ExperimentRun(object):
                 sess.run(tf.global_variables_initializer())
 
                 # Warm start hooks
-                warm_start_fn and warm_start_fn()
+                warm_start_fn and warm_start_fn(self, self.experiment, model, sess)
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
