@@ -135,19 +135,19 @@ class Experiment(object):
         assert self.__model is not None, "Model is not configured"
         return self.__model(*args, **kwargs)
 
-    def train(self, dataset_fn, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.TRAIN)
-        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=checkpoint_steps, 
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=checkpoint_steps, 
                 summary_steps=summary_steps, hooks=hooks)
 
-    def eval(self, dataset_fn, epochs=1, config=None, summary_steps=100, hooks=()):
+    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.EVAL)
-        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=None, 
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
 
-    def test(self, dataset_fn, epochs=1, config=None, summary_steps=100, hooks=()):
+    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
         run = ExperimentRun(self, Mode.PREDICT)
-        run.run(dataset_fn, epochs=epochs, config=config, checkpoint_steps=None, 
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
 
 class ExperimentOutput(object):
@@ -221,7 +221,7 @@ class ExperimentRun(object):
         assert self.__checkpoint_hook is not None, "First run the experiment"
         self.__checkpoint_hook.trigger()
 
-    def run(self, dataset_fn, epochs=1, config=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
@@ -249,7 +249,8 @@ class ExperimentRun(object):
                 with tf.control_dependencies(input_tensors):
                     outputs = self.experiment(x, y)
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
-        
+                    assert mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
+
                 # Prep summaries and checkpoints
                 model_dir = self.experiment.get_model_directory()
                 merged = tf.summary.merge_all()
@@ -260,6 +261,9 @@ class ExperimentRun(object):
                 
                 # Run once
                 sess.run(tf.global_variables_initializer())
+
+                # Warm start hooks
+                warm_start_fn and warm_start_fn()
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
@@ -288,24 +292,23 @@ class ExperimentRun(object):
                 # First run to fix/update steps
                 first = True
 
+                # Standard requested tensors
+                if mode == Mode.TRAIN:
+                    standard_feed = [global_step, outputs.loss, outputs.train_op]
+                else:
+                    standard_feed = [global_step, outputs.loss, []]
+
                 # Up to epochs
                 for epoch in bar(range(epochs)):
                     self.__steps_bar = bar()
 
                     try:
                         while True:
-                            # Standard requested tensors
-                            feed = [global_step, outputs.train_op, outputs.loss]
-
                             # Other requests of hooks
-                            extra_inputs = 0
-                            for hook in hooks:
-                                if hook.ready(self.__step + 1):
-                                    feed += [hook.tensors]
-                                    extra_inputs += 1
-                            
+                            hooks_feed = [hooks.tensors for hook in hooks if hook.ready(self.__step + 1)]
+
                             # Run session
-                            self.__step, _, loss, *hooks_output = sess.run(feed)
+                            self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
                             
                             # Update bar
                             self.__steps_bar.set_description('Loss: {:.2f}'.format(loss or '?'))
