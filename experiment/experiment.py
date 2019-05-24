@@ -325,3 +325,19 @@ class ExperimentRun(object):
                         pass
                     finally:
                         self.__steps_bar.close()
+
+
+def keras_weight_loader(module, model, include_top, weights='imagenet'):
+    if weights == 'imagenet':
+        if include_top:
+            weights_path = keras_utils.get_file(
+                module.WEIGHTS_PATH.split('/')[-1],
+                module.WEIGHTS_PATH,
+                cache_subdir='models')
+        else:
+            weights_path = keras_utils.get_file(
+                module.WEIGHTS_PATH_NO_TOP.split('/')[-1],
+                module.WEIGHTS_PATH_NO_TOP,
+                cache_subdir='models')
+        
+        model.load_weights(weights_path)
