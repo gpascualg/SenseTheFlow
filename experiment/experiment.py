@@ -1,5 +1,6 @@
 import tempfile
 import os
+import copy
 import tensorflow as tf
 
 from threading import Thread
@@ -18,7 +19,7 @@ def default_config():
 class Experiment(object):
     Instances = {}
 
-    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None):
+    def __new__(cls, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
         try:
             instance = Experiment.Instances[experiment_name]
         except:
@@ -27,9 +28,16 @@ class Experiment(object):
 
         return instance
     
-    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None):
-        print("INIT {}".format(model))
-        # Vars
+    def __init__(self, experiment_name, model, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+        # Params can be modified on any of the callbacks without affecting
+        # the original object
+        self.params = copy.copy(params or {})
+
+        # Issue a warning if no parameters are set
+        if not self.__is_using_initialized_model:
+            print("[WARNING] Defaulting to empty {} parameters", file=sys.stderr)
+
+        # Private variables
         self.__model = model
         self.__data = []
         self.__gpu = None
@@ -126,7 +134,7 @@ class Experiment(object):
     def _continue_loading(self, callback, model, is_using_initialized_model):
         self.__model_components = model
         self.__is_using_initialized_model = is_using_initialized_model
-        callback(self)
+        callback(self, self.__model)
 
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
@@ -141,11 +149,17 @@ class Experiment(object):
                 summary_steps=summary_steps, hooks=hooks)
 
     def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
+        if not self.__is_using_initialized_model:
+            print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
+
         run = ExperimentRun(self, Mode.EVAL)
         run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
 
     def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
+        if not self.__is_using_initialized_model:
+            print("[WARNING] Testing a non-trained model", file=sys.stderr)
+
         run = ExperimentRun(self, Mode.PREDICT)
         run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
                 summary_steps=summary_steps, hooks=hooks)
@@ -174,7 +188,7 @@ class ExperimentOutput(object):
 class ExperimentHook(object):
     def __init__(self, steps, callback, concurrent=True):
         self.__steps = steps
-        self.tensors = []
+        self.__tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
         self.__now = False
@@ -191,8 +205,13 @@ class ExperimentHook(object):
         else:
             self.__callback(step, *args)
 
+    def tensors(self):
+        # Defaults to returning the list of tensors, might be overloaded
+        # to, for example, create runtime summaries
+        return self.__tensors
+
     def needs(self, tensor):
-        self.tensors.append(tensor)
+        self.__tensors.append(tensor)
 
     def trigger(self):
         self.__now = True
@@ -247,9 +266,9 @@ class ExperimentRun(object):
 
                 # Get outputs from model
                 with tf.control_dependencies(input_tensors):
-                    outputs = self.experiment(x, y)
+                    outputs = self.experiment(x, y, self.mode, self.experiment.params)
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
-                    assert mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
+                    assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
 
                 # Prep summaries and checkpoints
                 model_dir = self.experiment.get_model_directory()
@@ -293,7 +312,7 @@ class ExperimentRun(object):
                 first = True
 
                 # Standard requested tensors
-                if mode == Mode.TRAIN:
+                if self.mode == Mode.TRAIN:
                     standard_feed = [global_step, outputs.loss, outputs.train_op]
                 else:
                     standard_feed = [global_step, outputs.loss, []]
@@ -305,7 +324,7 @@ class ExperimentRun(object):
                     try:
                         while True:
                             # Other requests of hooks
-                            hooks_feed = [hook.tensors for hook in hooks if hook.ready(self.__step + 1)]
+                            hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + 1)]
 
                             # Run session
                             self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
@@ -316,13 +335,15 @@ class ExperimentRun(object):
                             first = False
 
                             # Call all hooks
-                            for idx, hook in enumerate(hooks):
-                                if hook.ready(self.__step):
-                                    hook(self.__step, *hooks_output[idx])
+                            for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
+                                hook(self.__step, *hooks_output[idx])
 
                     except tf.errors.OutOfRangeError:
                         # It's ok, one epoch done
                         pass
+                    except KeyboardInterrupt:
+                        # Exit gracefully
+                        break
                     finally:
                         self.__steps_bar.close()
 
@@ -330,12 +351,12 @@ class ExperimentRun(object):
 def keras_weight_loader(module, model, include_top, weights='imagenet'):
     if weights == 'imagenet':
         if include_top:
-            weights_path = keras_utils.get_file(
+            weights_path = tf.keras.utils.get_file(
                 module.WEIGHTS_PATH.split('/')[-1],
                 module.WEIGHTS_PATH,
                 cache_subdir='models')
         else:
-            weights_path = keras_utils.get_file(
+            weights_path = tf.keras.utils.get_file(
                 module.WEIGHTS_PATH_NO_TOP.split('/')[-1],
                 module.WEIGHTS_PATH_NO_TOP,
                 cache_subdir='models')

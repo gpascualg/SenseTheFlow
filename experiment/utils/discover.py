@@ -130,7 +130,11 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
             if change['new'] == 2 and candidates:
                 rmtree(candidates[0].model_dir)
 
-            change['owner'].close()
+            select.close()
+
+            @out.capture()
+            def forward(fn, *args):
+                fn(*args)
 
             if change['new'] in (1, 2):
                 model = _create_model(
@@ -139,9 +143,9 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
                     prepend_timestamp,
                     append_timestamp
                 )
-                on_discovered(model, False)
+                forward(on_discovered, model, False)
             else:
-                on_discovered(change['new'], True)
+                forward(on_discovered, change['new'], True)
 
     # Display widgets
     display(select)
