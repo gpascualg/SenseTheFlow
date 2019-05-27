@@ -298,7 +298,7 @@ class ExperimentRun(object):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
                 global_step = tf.train.get_or_create_global_step()
-                dataset = dataset_fn()
+                dataset = dataset_fn(self.mode)
                 itr = dataset.make_one_shot_iterator()
 
                 # Test has no y
