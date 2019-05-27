@@ -173,11 +173,12 @@ class ExperimentOutput(object):
         self.loss = loss
 
 class ExperimentHook(object):
-    def __init__(self, steps, callback, concurrent=True):
+    def __init__(self, steps, callback, concurrent=True, args=()):
         self.__steps = steps
         self.__tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
+        self.__args = args
         self.__now = Event()
         self.__ready = Event()
 
@@ -186,7 +187,7 @@ class ExperimentHook(object):
 
     def __call_callback(self, step, *args):
         try:
-            self.__callback(step, *args)
+            self.__callback(step, *args, *self.__args)
             self.__ready.set()
         except Exception as e:
             if self.__concurrent:
