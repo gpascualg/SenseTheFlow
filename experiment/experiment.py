@@ -34,7 +34,7 @@ class Experiment(object):
         self.params = copy.copy(params or {})
 
         # Issue a warning if no parameters are set
-        if not self.__is_using_initialized_model:
+        if not params:
             print("[WARNING] Defaulting to empty {} parameters", file=sys.stderr)
 
         # Private variables
@@ -141,28 +141,28 @@ class Experiment(object):
 
     def __call__(self):
         assert self.__model_cls is not None, "Model is not configured"
-        return self.__model_cls(self.experiment.params)
+        return self.__model_cls(self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100):
         run = ExperimentRun(self, Mode.TRAIN)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=checkpoint_steps, 
-                summary_steps=summary_steps, hooks=hooks)
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
+                summary_steps=summary_steps)
 
-    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
+    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100):
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
-                summary_steps=summary_steps, hooks=hooks)
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+                summary_steps=summary_steps)
 
-    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, summary_steps=100, hooks=()):
+    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.PREDICT)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, checkpoint_steps=None, 
-                summary_steps=summary_steps, hooks=hooks)
+        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+                summary_steps=summary_steps)
 
 class ExperimentOutput(object):
     def __init__(self, _sentinel=None, outputs=None, train_op=None, loss=None):
@@ -240,7 +240,7 @@ class ExperimentRun(object):
         assert self.__checkpoint_hook is not None, "First run the experiment"
         self.__checkpoint_hook.trigger()
 
-    def run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, checkpoint_steps=1000, summary_steps=100, hooks=()):
+    def run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100):
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
@@ -271,6 +271,9 @@ class ExperimentRun(object):
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
                     assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
 
+                # Any more hooks to be created
+                hooks = (hooks_fn and hooks_fn(model, x, y, outputs)) or []
+
                 # Prep summaries and checkpoints
                 model_dir = self.experiment.get_model_directory()
                 merged = tf.summary.merge_all()
@@ -283,7 +286,7 @@ class ExperimentRun(object):
                 sess.run(tf.global_variables_initializer())
 
                 # Warm start hooks
-                warm_start_fn and warm_start_fn(self, self.experiment, model, sess)
+                warm_start_fn and warm_start_fn(self.experiment, model, sess)
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
@@ -291,7 +294,6 @@ class ExperimentRun(object):
                     saver.restore(sess, ckpt.model_checkpoint_path)
 
                 # Checkpoints?
-                hooks = list(hooks)
                 if checkpoint_steps is not None:
                     self.__checkpoint_hook = ExperimentHook(
                         steps=checkpoint_steps,

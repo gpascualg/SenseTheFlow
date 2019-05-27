@@ -1,0 +1,16 @@
+/opt/anaconda/lib/python3.6/site-packages/h5py/__init__.py:36: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+  from ._conv import register_converters as _register_converters
+TensorBoard 1.13.0 at http://fa448d04d5ad:6006 (Press CTRL+C to quit)
+W0524 16:50:35.933662 140390695810816 plugin_event_accumulator.py:294] Found more than one graph event per run, or there was a metagraph containing a graph_def, as well as one or more graph events.  Overwriting the graph with the newest event.
+W0524 16:50:36.028595 140390695810816 plugin_event_accumulator.py:302] Found more than one metagraph event per run. Overwriting the metagraph with the newest event.
+W0524 16:50:36.149317 140390695810816 plugin_event_accumulator.py:294] Found more than one graph event per run, or there was a metagraph containing a graph_def, as well as one or more graph events.  Overwriting the graph with the newest event.
+W0524 16:50:36.338288 140390695810816 plugin_event_accumulator.py:294] Found more than one graph event per run, or there was a metagraph containing a graph_def, as well as one or more graph events.  Overwriting the graph with the newest event.
+W0524 16:50:36.428275 140390695810816 plugin_event_accumulator.py:302] Found more than one metagraph event per run. Overwriting the metagraph with the newest event.
+W0524 16:50:36.588646 140390695810816 plugin_event_accumulator.py:294] Found more than one graph event per run, or there was a metagraph containing a graph_def, as well as one or more graph events.  Overwriting the graph with the newest event.
+W0524 16:50:36.732281 140390695810816 plugin_event_accumulator.py:302] Found more than one metagraph event per run. Overwriting the metagraph with the newest event.
+WARNING:tensorflow:From /opt/anaconda/lib/python3.6/site-packages/tensorboard/plugins/projector/projector_plugin.py:410: checkpoint_exists (from tensorflow.python.training.checkpoint_management) is deprecated and will be removed in a future version.
+Instructions for updating:
+Use standard file APIs to check for files with this prefix.
+W0527 08:22:26.864101 140388388042496 deprecation.py:323] From /opt/anaconda/lib/python3.6/site-packages/tensorboard/plugins/projector/projector_plugin.py:410: checkpoint_exists (from tensorflow.python.training.checkpoint_management) is deprecated and will be removed in a future version.
+Instructions for updating:
+Use standard file APIs to check for files with this prefix.
