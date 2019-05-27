@@ -61,6 +61,21 @@ class Experiment(object):
         self.__before_run = before_run
         self.__on_stop = on_stop
 
+        # Async execution contexts
+        self.__contexts = {mode: [] for mode in Mode}
+
+    def _add_async_context(self, mode, context):
+        if not isinstance(context, AsyncExecution):
+            return
+
+        if context in self.__contexts[mode]:
+            return
+
+        self.__contexts[mode].append(context)
+
+    def get_context(self, mode):
+        return self.__contexts[mode]
+
     def set_remote_execution(self):
         self.__is_remote_execution = True
 
@@ -146,24 +161,30 @@ class Experiment(object):
 
     def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
         run = ExperimentRun(self, Mode.TRAIN)
-        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
             summary_steps=summary_steps, sync=sync)
+        self._add_async_context(Mode.TRAIN, context_or_none)
+        return context_or_none
 
     def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL)
-        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
             summary_steps=summary_steps, sync=sync)
+        self._add_async_context(Mode.EVAL, context_or_none)
+        return context_or_none
 
     def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.PREDICT)
-        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
             summary_steps=summary_steps, sync=sync)
+        self._add_async_context(Mode.PREDICT, context_or_none)
+        return context_or_none
 
 class ExperimentOutput(object):
     def __init__(self, _sentinel=None, outputs=None, train_op=None, loss=None):
