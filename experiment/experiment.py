@@ -3,7 +3,7 @@ import os
 import copy
 import tensorflow as tf
 
-from threading import Thread
+from threading import Thread, Event
 
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
@@ -143,26 +143,26 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100):
+    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
         run = ExperimentRun(self, Mode.TRAIN)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
-                summary_steps=summary_steps)
+        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
+            summary_steps=summary_steps, sync=sync)
 
-    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100):
+    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
-                summary_steps=summary_steps)
+        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+            summary_steps=summary_steps, sync=sync)
 
-    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100):
+    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.PREDICT)
-        run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
-                summary_steps=summary_steps)
+        return run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
+            summary_steps=summary_steps, sync=sync)
 
 class ExperimentOutput(object):
     def __init__(self, _sentinel=None, outputs=None, train_op=None, loss=None):
@@ -171,39 +171,31 @@ class ExperimentOutput(object):
         self.train_op = train_op
         self.loss = loss
 
-    def _as_list(self):
-        return (self.outputs, self.train_op, self.loss)
-
-    def get_feed(self):
-        return [x for x in self._as_list() if x is not None]
-
-    def format_outputs(self, outputs):
-        names = ['outputs', 'train_op', 'loss']
-        names = [names[i] for i, x in enumerate(self._as_list()) if x is not None]
-
-        return ExperimentOutput(**{
-            name: value for name, value in zip(names, outputs)
-        })
-
 class ExperimentHook(object):
     def __init__(self, steps, callback, concurrent=True):
         self.__steps = steps
         self.__tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
-        self.__now = False
+        self.__now = Event()
+        self.__ready = Event()
 
     def ready(self, step):
-        return self.__now or (step % self.__steps) == 0
+        return self.__now.is_set() or (step % self.__steps) == 0
+
+    def __call_callback(self, step, *args):
+        self.__callback(step, *args)
+        self.__ready.set()
 
     def __call__(self, step, *args):
-        self.__now = False
+        self.__now.clear()
+        self.__ready.clear()
 
         if self.__concurrent:
-            thread = Thread(target=self.__callback, args=(step, *args))
+            thread = Thread(target=self.__call_callback, args=(step, *args))
             thread.start()
         else:
-            self.__callback(step, *args)
+            self.__call_callback(step, *args)
 
     def tensors(self):
         # Defaults to returning the list of tensors, might be overloaded
@@ -214,7 +206,36 @@ class ExperimentHook(object):
         self.__tensors.append(tensor)
 
     def trigger(self):
-        self.__now = True
+        self.__ready.clear()
+        self.__now.set()
+
+    def wait(self):
+        self.__ready.wait()
+
+class AsyncExecution(object):
+    def __init__(self, experiment_run, *args, **kwargs):
+        self.__experiment_run = experiment_run
+        self.experiment = experiment_run.experiment
+        self.thread = Thread(target=experiment_run._run, args=args, kwargs=kwargs)
+        self.thread.start()
+
+    def wait(self):
+        try:
+            self.thread.join()
+        except KeyboardInterrupt:
+            return
+    
+    def stop(self, block=True):
+        self.experiment_run.stop()
+        if block:
+            self.wait()
+
+    def save(self, block=True):
+        self.experiment.save(block=block)
+
+    def reattach(self):
+        self.experiment.reattach()
+
 
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
@@ -224,6 +245,7 @@ class ExperimentRun(object):
         # To allow execution re-attaching
         self.__steps_bar = None
         self.__step = -1
+        self.__stop = False
 
         # Trigger hook right now
         self.__checkpoint_hook = None
@@ -236,11 +258,24 @@ class ExperimentRun(object):
         self.__steps_bar = bar()
         self.__steps_bar.update(self.__step)
 
-    def save(self):
+    def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
         self.__checkpoint_hook.trigger()
 
-    def run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100):
+        if block:
+            self.__checkpoint_hook.wait()
+
+    # The user won't see this at all
+    def run(self, *args, **kwargs):
+        if kwargs['sync']:
+            return self._run(*args, **kwargs)
+        else:
+            context = AsyncExecution(self, *args, **kwargs)
+            return context
+
+    def _run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+        # @param sync is added for convenience, it is not used at all here
+
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
@@ -325,7 +360,7 @@ class ExperimentRun(object):
                     self.__steps_bar = bar()
 
                     try:
-                        while True:
+                        while not self.__stop:
                             # Other requests of hooks
                             hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + 1)]
 
@@ -349,6 +384,9 @@ class ExperimentRun(object):
                         break
                     finally:
                         self.__steps_bar.close()
+
+                    if self.__stop:
+                        break
 
 
 def keras_weight_loader(module, model, include_top, weights='imagenet'):
