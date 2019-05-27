@@ -2,8 +2,9 @@ import tempfile
 import os
 import copy
 import tensorflow as tf
+import traceback as tb
 
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
@@ -184,8 +185,13 @@ class ExperimentHook(object):
         return self.__now.is_set() or (step % self.__steps) == 0
 
     def __call_callback(self, step, *args):
-        self.__callback(step, *args)
-        self.__ready.set()
+        try:
+            self.__callback(step, *args)
+            self.__ready.set()
+        except Exception as e:
+            if self.__concurrent:
+                tb.print_exc()
+            raise e
 
     def __call__(self, step, *args):
         self.__now.clear()
@@ -216,26 +222,28 @@ class AsyncExecution(object):
     def __init__(self, experiment_run, *args, **kwargs):
         self.__experiment_run = experiment_run
         self.experiment = experiment_run.experiment
-        self.thread = Thread(target=experiment_run._run, args=args, kwargs=kwargs)
-        self.thread.start()
+        self.__thread = Thread(target=experiment_run._run, args=args, kwargs=kwargs)
+        self.__thread.start()
 
     def wait(self):
         try:
-            self.thread.join()
+            self.__thread.join()
         except KeyboardInterrupt:
             return
     
     def stop(self, block=True):
-        self.experiment_run.stop()
+        self.__experiment_run.stop()
         if block:
             self.wait()
 
     def save(self, block=True):
-        self.experiment.save(block=block)
+        self.__experiment_run.save(block=block)
 
     def reattach(self):
-        self.experiment.reattach()
+        self.__experiment_run.reattach()
 
+    def is_running(self):
+        return self.__thread.is_alive()
 
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
@@ -251,19 +259,28 @@ class ExperimentRun(object):
         self.__checkpoint_hook = None
         self.__summaries_hook = None
 
+        # Avoid weird issues with hook signaling
+        self.__run_lock = Lock()
+
     def reattach(self):
-        if self.__steps_bar is not None:
-            self.__steps_bar.close()
+        with self.__run_lock:
+            if self.__steps_bar is not None:
+                self.__steps_bar.close()
         
-        self.__steps_bar = bar()
-        self.__steps_bar.update(self.__step)
+            self.__steps_bar = bar()
+            self.__steps_bar.update(self.__step)
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
-        self.__checkpoint_hook.trigger()
+        with self.__run_lock:
+            self.__checkpoint_hook.trigger()
 
         if block:
             self.__checkpoint_hook.wait()
+
+    def stop(self):
+        with self.__run_lock:
+            self.__stop = True
 
     # The user won't see this at all
     def run(self, *args, **kwargs):
@@ -361,20 +378,22 @@ class ExperimentRun(object):
 
                     try:
                         while not self.__stop:
-                            # Other requests of hooks
-                            hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + 1)]
+                            # Lock
+                            with self.__run_lock:
+                                # Other requests of hooks
+                                hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + 1)]
 
-                            # Run session
-                            self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
+                                # Run session
+                                self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
                             
-                            # Update bar
-                            self.__steps_bar.set_description('Loss: {:.2f}'.format(loss or '?'))
-                            self.__steps_bar.update(1 if not first else self.__step)
-                            first = False
+                                # Update bar
+                                self.__steps_bar.set_description('Loss: {:.2f}'.format(loss or '?'))
+                                self.__steps_bar.update(1 if not first else self.__step)
+                                first = False
 
-                            # Call all hooks
-                            for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
-                                hook(self.__step, *hooks_output[idx])
+                                # Call all hooks
+                                for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
+                                    hook(self.__step, *hooks_output[idx])
 
                     except tf.errors.OutOfRangeError:
                         # It's ok, one epoch done
@@ -382,6 +401,11 @@ class ExperimentRun(object):
                     except KeyboardInterrupt:
                         # Exit gracefully
                         break
+                    except Exception as e:
+                        if not self.sync:
+                            tb.print_exc()
+
+                        raise e
                     finally:
                         self.__steps_bar.close()
 

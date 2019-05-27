@@ -4,6 +4,7 @@ import json
 import os
 import time
 from types import SimpleNamespace
+from shutil import rmtree
 
 from ...config import is_jupyter
 
@@ -128,7 +129,7 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     def on_change(change):
         if change['type'] == 'change' and change['name'] == 'value':
             if change['new'] == 2 and candidates:
-                rmtree(candidates[0].model_dir)
+                rmtree(candidates[0][1].model_dir)
 
             select.close()
 
