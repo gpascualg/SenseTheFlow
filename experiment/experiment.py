@@ -5,7 +5,8 @@ import sys
 import tensorflow as tf
 import traceback as tb
 
-from threading import Thread, Event, Lock
+from threading import Thread, Event, Lock, Condition
+from concurrent.futures import ThreadPoolExecutor
 
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
@@ -21,7 +22,7 @@ def default_config():
 class Experiment(object):
     Instances = {}
 
-    def __new__(cls, experiment_name, model_cls=None, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+    def __new__(cls, experiment_name, model_cls=None, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None, max_concurrent_hooks=5):
         try:
             instance = Experiment.Instances[experiment_name]
         except:
@@ -30,7 +31,7 @@ class Experiment(object):
 
         return instance
     
-    def __init__(self, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+    def __init__(self, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None, max_concurrent_hooks=5):
         assert model_cls is not None, "It is required to pass a model class"
         assert not isinstance(model_cls, tf.keras.Model) and issubclass(model_cls, tf.keras.Model), "Model should be the class type, not an instance"
 
@@ -67,6 +68,24 @@ class Experiment(object):
 
         # Async execution contexts
         self.__contexts = {mode: [] for mode in Mode}
+
+        # Concurrent hook execution
+        self.__pool = ThreadPoolExecutor(max_workers=max_concurrent_hooks)
+        self.__pool_count = 0
+        self.__max_concurrent_hooks = max_concurrent_hooks
+        self.__pool_cond = Condition()
+
+    def post_job(self, fn, *args, **kwargs):
+        with self.__pool_cond:
+            self.__pool_cond.wait_for(lambda: self.__pool_count < self.__max_concurrent_hooks)
+            self.__pool_count += 1
+            self.__pool.submit(self._monitor_job, fn, *args, **kwargs)
+
+    def _monitor_job(self, fn, *args, **kwargs):
+        fn(*args, **kwargs)
+        with self.__pool_cond:
+            self.__pool_count -= 1
+            self.__pool_cond.notify()
 
     def _add_async_context(self, mode, context):
         if not isinstance(context, AsyncExecution):
@@ -231,13 +250,12 @@ class ExperimentHook(object):
         finally:
             self.__ready.set()
 
-    def __call__(self, step, *args):
+    def __call__(self, experiment, step, *args):
         self.__now.clear()
         self.__ready.clear()
 
         if self.__concurrent:
-            thread = Thread(target=self.__call_callback, args=(step, *args))
-            thread.start()
+            experiment.post_job(self.__call_callback, step, *args)
         else:
             self.__call_callback(step, *args)
 
@@ -442,7 +460,7 @@ class ExperimentRun(object):
 
                                 # Call all hooks
                                 for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
-                                    hook(self.__step, *hooks_output[idx])
+                                    hook(self.experiment, self.__step, *hooks_output[idx])
 
                     except tf.errors.OutOfRangeError:
                         # It's ok, one epoch done
