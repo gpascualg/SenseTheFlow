@@ -21,7 +21,7 @@ def default_config():
 class Experiment(object):
     Instances = {}
 
-    def __new__(cls, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+    def __new__(cls, experiment_name, model_cls=None, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
         try:
             instance = Experiment.Instances[experiment_name]
         except:
@@ -31,6 +31,9 @@ class Experiment(object):
         return instance
     
     def __init__(self, experiment_name, model_cls, on_data_ready=None, before_run=None, on_stop=None, persistent_path=None, params=None):
+        assert model_cls is not None, "It is required to pass a model class"
+        assert not isinstance(model_cls, tf.keras.Model) and issubclass(model_cls, tf.keras.Model), "Model should be the class type, not an instance"
+
         # Params can be modified on any of the callbacks without affecting
         # the original object
         self.params = copy.copy(params or {})
@@ -76,6 +79,16 @@ class Experiment(object):
 
     def get_context(self, mode):
         return self.__contexts[mode]
+
+    def wait_ready(self):
+        for mode in Mode:
+            for context in self.__contexts[mode]:
+                context.wait_ready()
+
+    def wait_all(self):
+        for mode in Mode:
+            for context in self.__contexts[mode]:
+                context.wait()
 
     def set_remote_execution(self):
         self.__is_remote_execution = True
@@ -253,6 +266,12 @@ class AsyncExecution(object):
             self.__thread.join()
         except KeyboardInterrupt:
             return
+
+    def wait_ready(self):
+        try:
+            self.__experiment_run.wait_ready()
+        except KeyboardInterrupt:
+            return
     
     def stop(self, block=True):
         self.__experiment_run.stop()
@@ -283,6 +302,7 @@ class ExperimentRun(object):
         self.__summaries_hook = None
 
         # Avoid weird issues with hook signaling
+        self.__ready = Event()
         self.__run_lock = Lock()
 
     def reattach(self):
@@ -312,6 +332,9 @@ class ExperimentRun(object):
         else:
             context = AsyncExecution(self, *args, **kwargs)
             return context
+
+    def wait_ready(self):
+        self.__ready.wait()
 
     @discover.GO.capture
     def _run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
@@ -387,14 +410,15 @@ class ExperimentRun(object):
                     self.__summaries_hook.needs(merged)
                     hooks.append(self.__summaries_hook)
 
-                # First run to fix/update steps
-                first = True
-
                 # Standard requested tensors
                 if self.mode == Mode.TRAIN:
                     standard_feed = [global_step, outputs.loss, outputs.train_op]
                 else:
                     standard_feed = [global_step, outputs.loss, []]
+
+                # Signal it is ready
+                first = True
+                self.__ready.set()
 
                 # Up to epochs
                 for epoch in bar(range(epochs)):
