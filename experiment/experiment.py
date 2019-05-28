@@ -47,6 +47,7 @@ class Experiment(object):
         self.__model_cls = model_cls
         self.__data = []
         self.__gpu = None
+        self.__gpu_lock = Lock()
 
         # Predefined path
         if persistent_path is None:
@@ -113,7 +114,10 @@ class Experiment(object):
         self.__is_remote_execution = True
 
     def assign_gpu(self, gpu):
-        self.__gpu = gpu
+        if not isinstance(gpu, (list, tuple)):
+            gpu = (gpu,)
+
+        self.__gpu = {g: 0 for g in gpu}
 
     def add_data(self, method, uri_type, uri):
         if uri_type == UriType.PERSISTENT:
@@ -151,7 +155,16 @@ class Experiment(object):
     def get_gpu(self):
         assert self.__gpu is not None, "Got an invalid GPU"
 
-        return self.__gpu
+        with self.__gpu_lock:
+            gpu = min(gpu.items(), key=lambda x: x[1])[0]
+            self.__gpu[gpu] += 1
+            return gpu
+
+    def free_gpu(self, gpu):
+        assert self.__gpu is not None, "Got an invalid GPU"
+
+        with self.__gpu_lock:
+            self.__gpu[gpu] -= 1
 
     def get_persistant_path(self):
         if not self.__is_remote_execution:
@@ -356,7 +369,10 @@ class ExperimentRun(object):
 
     @discover.GO.capture
     def _run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
-        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
+        # Get a GPU for execution
+        gpu = self.experiment.get_gpu()
+
+        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(gpu)):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
                 global_step = tf.train.get_or_create_global_step()
@@ -474,6 +490,9 @@ class ExperimentRun(object):
 
                     if self.__stop:
                         break
+
+        # Free current GPU
+        self.experiment.free_gpu(gpu)
 
 
 def keras_weight_loader(module, model, include_top, weights='imagenet'):
