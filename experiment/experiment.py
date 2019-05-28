@@ -386,8 +386,9 @@ class ExperimentRun(object):
                 warm_start_fn and warm_start_fn(self.experiment, model, self.mode, sess)
                 
                 # Restore if there is anything to restore from
-                ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
+                ckpt = tf.train.get_checkpoint_state(model_dir) 
                 if ckpt is not None:
+                    print('Restoring from {}'.format(ckpt.model_checkpoint_path))
                     saver.restore(sess, ckpt.model_checkpoint_path)
 
                 # Checkpoints?
