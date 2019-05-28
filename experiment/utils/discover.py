@@ -2,9 +2,13 @@ import datetime
 import itertools
 import json
 import os
+import sys
 import time
+import traceback as tb
 from types import SimpleNamespace
 from shutil import rmtree
+from functools import wraps
+from threading import Lock
 
 from ...config import is_jupyter
 
@@ -107,6 +111,94 @@ def _get_candidate_models(model_dir, model_name):
     except:
         return []
 
+class GlobalOutput(object):
+    Instance = None
+
+    def __new__(cls):
+        if GlobalOutput.Instance is None:
+            GlobalOutput.Instance = object.__new__(cls)
+        return GlobalOutput.Instance
+
+    def __init__(self):
+        self.__out = None
+        self.__ip = None
+        self.__old_stdout = None
+        self.__old_stderr = None
+        self.__count = 0
+        self.__lock = Lock()
+
+    def create(self):
+        if self.__out is not None:
+            self.__out.close()
+
+        if is_jupyter():
+            import ipywidgets as widgets
+            self.__out = widgets.Output()
+
+    def widget(self):
+        return self.__out
+
+    def capture(self, fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if self.__out is None or not is_jupyter():
+                def inner():
+                    return fn(*args, **kwargs)
+            
+            if self.__out is not None:
+                if not is_jupyter():
+                    with self:
+                        return inner()
+                else:
+                    @self.__out.capture()
+                    def inner():
+                        return fn(*args, **kwargs)
+            
+            return inner()
+        return wrapper
+
+    class Redirect(object):
+        def __init__(self, fn):
+            self.fn = fn
+
+        def write(self, string):
+            self.fn(string)
+
+        def flush(self):
+            pass
+    
+    def unredirect(self):
+        if self.__old_stdout:
+            sys.stdout = self.__old_stdout
+            sys.stderr = self.__old_stderr
+            self.__old_stdout = None
+
+    def redirect(self):
+        if self.__old_stdout:
+            return
+
+        self.__old_stdout = sys.stdout
+        self.__old_stderr = sys.stderr
+        sys.stdout = GlobalOutput.Redirect(self.__out.append_stdout)
+        sys.stderr = GlobalOutput.Redirect(self.__out.append_stderr)
+
+    def __enter__(self):
+        with self.__lock:
+            if self.__count == 0:
+                self.redirect()
+            self.__count += 1
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with self.__lock:
+            self.__count -= 1
+            if self.__count == 0:
+                # Print exception manually, otherwise we won't see it
+                if exc_type is not None:
+                    tb.print_exc()
+                self.unredirect()
+
+GO = GlobalOutput()
+
 def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp, candidates, on_discovered):
     import ipywidgets as widgets
     from IPython.display import display
@@ -123,39 +215,42 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
         index=0,
         disabled=False
     )
-    out = widgets.Output()
 
-    @out.capture()
+    # Create a new widget
+    GO.create()
+
+    @GO.capture
     def on_change(change):
         if change['type'] == 'change' and change['name'] == 'value':
             if change['new'] == 2 and candidates:
                 rmtree(candidates[0][1].model_dir)
 
+            model = change['new']
+            initialized = model not in (1, 2)
             select.close()
 
-            @out.capture()
-            def forward(fn, *args):
-                fn(*args)
-
-            if change['new'] in (1, 2):
+            if not initialized:
                 model = _create_model(
                     model_dir, 
                     model_name, 
                     prepend_timestamp,
                     append_timestamp
                 )
-                forward(on_discovered, model, False)
-            else:
-                forward(on_discovered, change['new'], True)
+            
+            # get_ipython is no longer available due to being called from an "unsafe" environment
+            @GO.capture
+            def forward():
+                return on_discovered(model, initialized)
+            forward()
 
     # Display widgets
     display(select)
-    display(out) 
+    display(GO.widget()) 
 
     # Listen for changes
     select.observe(on_change)
 
-def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False):
+def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
     candidates = _get_candidate_models(model_dir, model_name)
 
     if not candidates:
@@ -165,8 +260,10 @@ def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_tim
             prepend_timestamp,
             append_timestamp
         )
-        on_discovered(model, False)
-        return
+        return on_discovered(model, False)
+
+    if force_last:
+       return on_discovered(candidates[0], False)
 
     if is_jupyter() and not force_ascii:
         return _discover_jupyter(
@@ -225,4 +322,4 @@ def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_tim
             append_timestamp
         )
     
-    on_discovered(model, is_using_initialized_model)
+    return on_discovered(model, is_using_initialized_model)

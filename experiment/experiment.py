@@ -135,14 +135,14 @@ class Experiment(object):
             
         return self.get_persistant_path()        
 
-    def run_local(self, callback, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False):
+    def run_local(self, callback, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
         model_dir = os.path.normpath(self.get_persistant_path())
         model_name = os.path.basename(model_dir)
         model_dir = model_dir[:-len(model_name)]
 
         # Discover models
         return discover.discover(model_dir, model_name, lambda *args: self._continue_loading(callback, *args), 
-                          prepend_timestamp, append_timestamp, delete_existing, force_ascii_discover)
+                          prepend_timestamp, append_timestamp, delete_existing, force_ascii_discover, force_last)
 
     def run_remote(self, on_run):
         self.__on_run = on_run
@@ -180,10 +180,10 @@ class Experiment(object):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
-        run = ExperimentRun(self, Mode.PREDICT)
+        run = ExperimentRun(self, Mode.TEST)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
             summary_steps=summary_steps, sync=sync)
-        self._add_async_context(Mode.PREDICT, context_or_none)
+        self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
 class ExperimentOutput(object):
@@ -312,9 +312,8 @@ class ExperimentRun(object):
             context = AsyncExecution(self, *args, **kwargs)
             return context
 
+    @discover.GO.capture
     def _run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
-        # @param sync is added for convenience, it is not used at all here
-
         with tf.Graph().as_default(), tf.device('/gpu:{}'.format(self.experiment.get_gpu())):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
@@ -323,12 +322,12 @@ class ExperimentRun(object):
                 itr = dataset.make_one_shot_iterator()
 
                 # Test has no y
-                if self.mode == Mode.PREDICT:
+                if self.mode == Mode.TEST:
                     x = itr.get_next()
                     y = None
                 else:
                     x, y = itr.get_next()
-                
+
                 # Input tensors to control deps
                 input_tensors = []
                 for v in (x, y):
@@ -396,7 +395,9 @@ class ExperimentRun(object):
 
                 # Up to epochs
                 for epoch in bar(range(epochs)):
+                    print('bar')
                     self.__steps_bar = bar()
+                    print('should see it')
 
                     try:
                         while not self.__stop:
@@ -423,12 +424,8 @@ class ExperimentRun(object):
                     except KeyboardInterrupt:
                         # Exit gracefully
                         break
-                    except Exception as e:
-                        if not self.sync:
-                            tb.print_exc()
-
-                        raise e
                     finally:
+                        print('Closing bar')
                         self.__steps_bar.close()
 
                     if self.__stop:
