@@ -199,19 +199,18 @@ class GlobalOutput(object):
 
 GO = GlobalOutput()
 
-def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp, candidates, on_discovered):
+def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing, candidates, on_discovered):
     import ipywidgets as widgets
     from IPython.display import display
 
-    candidates = [['/'.join(x.components), x] for x in candidates]
-    candidates[0][0] += ' *'
+    options = [('/'.join(x.components) + ('' if idx > 0 else ' *'), idx) for idx, x in enumerate(candidates)]
 
     select = widgets.Select(
         options=[
             ('-- Select a model --', None),
-            ('-- Create new --', 1),
-            ('-- Remove prev and create new --', 2)
-        ] + candidates,
+            ('-- Create new --', -1),
+            ('-- Remove prev and create new --', -2)
+        ] + options,
         index=0,
         disabled=False
     )
@@ -222,11 +221,14 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     @GO.capture
     def on_change(change):
         if change['type'] == 'change' and change['name'] == 'value':
-            if change['new'] == 2 and candidates:
-                rmtree(candidates[0][1].model_dir)
+            idx = change['new']
+            if idx == -2 and candidates:
+                if delete_existing == 'force' or _ask('Are you sure? [yes/no]: ', ('yes', 'y', 'no', 'n')) in ('y', 'yes'):
+                    rmtree(candidates[0].model_dir)
+                else:
+                    return
 
-            model = change['new']
-            initialized = model not in (1, 2)
+            initialized = idx not in (-1, -2)
             select.close()
 
             if not initialized:
@@ -236,7 +238,9 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
                     prepend_timestamp,
                     append_timestamp
                 )
-            
+            else:
+                model = candidates[idx]
+
             # get_ipython is no longer available due to being called from an "unsafe" environment
             @GO.capture
             def forward():
@@ -271,6 +275,7 @@ def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_tim
             model_name,
             prepend_timestamp,
             append_timestamp,
+            delete_existing,
             candidates,
             on_discovered
         )

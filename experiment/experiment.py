@@ -1,6 +1,7 @@
 import tempfile
 import os
 import copy
+import sys
 import tensorflow as tf
 import traceback as tb
 
@@ -194,7 +195,8 @@ class ExperimentOutput(object):
         self.loss = loss
 
 class ExperimentHook(object):
-    def __init__(self, steps, callback, concurrent=True, args=()):
+    def __init__(self, name, steps, callback, concurrent=True, args=()):
+        self.name = name
         self.__steps = steps
         self.__tensors = []
         self.__callback = callback
@@ -209,11 +211,12 @@ class ExperimentHook(object):
     def __call_callback(self, step, *args):
         try:
             self.__callback(step, *args, *self.__args)
-            self.__ready.set()
         except Exception as e:
+            # We can't have exceptions interrumpting the whole process
             if self.__concurrent:
                 tb.print_exc()
-            raise e
+        finally:
+            self.__ready.set()
 
     def __call__(self, step, *args):
         self.__now.clear()
@@ -226,8 +229,6 @@ class ExperimentHook(object):
             self.__call_callback(step, *args)
 
     def tensors(self):
-        # Defaults to returning the list of tensors, might be overloaded
-        # to, for example, create runtime summaries
         return self.__tensors
 
     def needs(self, tensor):
@@ -345,7 +346,7 @@ class ExperimentRun(object):
                     assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
 
                 # Any more hooks to be created
-                hooks = (hooks_fn and hooks_fn(model, x, y, outputs)) or []
+                hooks = (hooks_fn and hooks_fn(self.experiment, model, self.mode, x, y, outputs)) or []
 
                 # Prep summaries and checkpoints
                 model_dir = self.experiment.get_model_directory()
@@ -359,7 +360,7 @@ class ExperimentRun(object):
                 sess.run(tf.global_variables_initializer())
 
                 # Warm start hooks
-                warm_start_fn and warm_start_fn(self.experiment, model, sess)
+                warm_start_fn and warm_start_fn(self.experiment, model, self.mode, sess)
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(os.path.join(model_dir, 'model.ckpt')) 
@@ -369,6 +370,7 @@ class ExperimentRun(object):
                 # Checkpoints?
                 if checkpoint_steps is not None:
                     self.__checkpoint_hook = ExperimentHook(
+                        name='Checkpoint',
                         steps=checkpoint_steps,
                         callback=lambda step: saver.save(sess, os.path.join(model_dir, 'model.ckpt'), global_step=step),
                         concurrent=False
@@ -378,6 +380,7 @@ class ExperimentRun(object):
                 # Summaries?
                 if summary_steps is not None:
                     self.__summaries_hook = ExperimentHook(
+                        name='Summaries',
                         steps=summary_steps,
                         callback=lambda step, merged: writer.add_summary(merged, step)
                     )
@@ -395,16 +398,14 @@ class ExperimentRun(object):
 
                 # Up to epochs
                 for epoch in bar(range(epochs)):
-                    print('bar')
                     self.__steps_bar = bar()
-                    print('should see it')
 
                     try:
                         while not self.__stop:
                             # Lock
                             with self.__run_lock:
                                 # Other requests of hooks
-                                hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + 1)]
+                                hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + int(first or self.mode == Mode.TRAIN))]
 
                                 # Run session
                                 self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
