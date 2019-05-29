@@ -156,7 +156,7 @@ class Experiment(object):
         assert self.__gpu is not None, "Got an invalid GPU"
 
         with self.__gpu_lock:
-            gpu = min(gpu.items(), key=lambda x: x[1])[0]
+            gpu = min(self.__gpu.items(), key=lambda x: x[1])[0]
             self.__gpu[gpu] += 1
             return gpu
 
