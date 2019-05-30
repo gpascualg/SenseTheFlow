@@ -201,9 +201,9 @@ class Experiment(object):
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
 
-    def __call__(self):
+    def __call__(self, mode):
         assert self.__model_cls is not None, "Model is not configured"
-        return self.__model_cls(self.params)
+        return self.__model_cls(mode, self.params)
 
     def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
         run = ExperimentRun(self, Mode.TRAIN)
@@ -397,7 +397,7 @@ class ExperimentRun(object):
 
                 # Get outputs from model
                 with tf.control_dependencies(input_tensors):
-                    model = self.experiment()
+                    model = self.experiment(self.mode)
                     outputs = model(x, y, self.mode, self.experiment.params)
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
                     assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
