@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import traceback as tb
+import logging
 from types import SimpleNamespace
 from shutil import rmtree
 from functools import wraps
@@ -133,7 +134,9 @@ class GlobalOutput(object):
 
         if is_jupyter():
             import ipywidgets as widgets
+            from IPython.display import display
             self.__out = widgets.Output()
+            display(self.__out)
 
     def widget(self):
         return self.__out
@@ -141,20 +144,12 @@ class GlobalOutput(object):
     def capture(self, fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            if self.__out is None or not is_jupyter():
-                def inner():
-                    return fn(*args, **kwargs)
+            if self.__out is None:
+                return fn(*args, **kwargs)
             
-            if self.__out is not None:
-                if not is_jupyter():
-                    with self:
-                        return inner()
-                else:
-                    @self.__out.capture()
-                    def inner():
-                        return fn(*args, **kwargs)
+            with self:
+                return fn(*args, **kwargs)
             
-            return inner()
         return wrapper
 
     class Redirect(object):
@@ -166,21 +161,38 @@ class GlobalOutput(object):
 
         def flush(self):
             pass
+        
+    def redirect_tf_logging(self):        
+        # Hack tensorflow logging
+        global _logger
+        try:
+            tf_logger = _logger 
+        except:
+            tf_logger = logging.getLogger('tensorflow')
+            
+        for handler in tf_logger.handlers[:]:
+            tf_logger.removeHandler(handler)
+        
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+        tf_logger.addHandler(handler)
     
     def unredirect(self):
         if self.__old_stdout:
             sys.stdout = self.__old_stdout
             sys.stderr = self.__old_stderr
             self.__old_stdout = None
+            self.redirect_tf_logging()
 
     def redirect(self):
-        if self.__old_stdout:
-            return
-
-        self.__old_stdout = sys.stdout
-        self.__old_stderr = sys.stderr
+        if self.__old_stdout is None:
+            self.__old_stdout = sys.stdout
+            self.__old_stderr = sys.stderr
+        
+        # Map standard output
         sys.stdout = GlobalOutput.Redirect(self.__out.append_stdout)
         sys.stderr = GlobalOutput.Redirect(self.__out.append_stderr)
+        self.redirect_tf_logging()
 
     def __enter__(self):
         with self.__lock:
@@ -195,7 +207,15 @@ class GlobalOutput(object):
                 # Print exception manually, otherwise we won't see it
                 if exc_type is not None:
                     tb.print_exc()
+                    
                 self.unredirect()
+                return True
+            
+    def forward(self, fn, *args, **kwargs):
+        @GO.capture
+        def _impl():
+            return fn(*args, **kwargs)
+        return _impl()
 
 GO = GlobalOutput()
 
@@ -214,9 +234,6 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
         index=0,
         disabled=False
     )
-
-    # Create a new widget
-    GO.create()
 
     @GO.capture
     def on_change(change):
@@ -242,10 +259,7 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
                 model = candidates[idx]
 
             # get_ipython is no longer available due to being called from an "unsafe" environment
-            @GO.capture
-            def forward():
-                return on_discovered(model, initialized)
-            forward()
+            GO.forward(on_discovered, model, initialized)
 
     # Display widgets
     display(select)
@@ -256,6 +270,10 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
 
 def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
     candidates = _get_candidate_models(model_dir, model_name)
+    
+    # Create a new widget in jupyter mode
+    if is_jupyter():
+        GO.create()
 
     if not candidates:
         model = _create_model(
@@ -264,10 +282,10 @@ def discover(model_dir, model_name, on_discovered, prepend_timestamp, append_tim
             prepend_timestamp,
             append_timestamp
         )
-        return on_discovered(model, False)
+        return GO.forward(on_discovered, model, False)
 
     if force_last:
-       return on_discovered(candidates[0], False)
+        return GO.forward(on_discovered, candidates[0], True)
 
     if is_jupyter() and not force_ascii:
         return _discover_jupyter(

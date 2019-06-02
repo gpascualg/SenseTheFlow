@@ -14,7 +14,7 @@ from .data import DataType, FetchMethod, UriType
 from .utils import discover
 from .mode import Mode
 
-
+                    
 def default_config():
     gpu_options = tf.GPUOptions(allow_growth=True)
     return tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
@@ -66,6 +66,7 @@ class Experiment(object):
         self.__on_data_ready = on_data_ready
         self.__before_run = before_run
         self.__on_stop = on_stop
+        self.__done_loading = Event()
 
         # Async execution contexts
         self.__contexts = {mode: [] for mode in Mode}
@@ -101,11 +102,15 @@ class Experiment(object):
         return self.__contexts[mode]
 
     def wait_ready(self):
+        self.__done_loading.wait()
+        
         for mode in Mode:
             for context in self.__contexts[mode]:
                 context.wait_ready()
 
     def wait_all(self):
+        self.__done_loading.wait()
+        
         for mode in Mode:
             for context in self.__contexts[mode]:
                 context.wait()
@@ -182,6 +187,10 @@ class Experiment(object):
         return self.get_persistant_path()        
 
     def run_local(self, callback, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
+        # Signal not ready
+        self.__done_loading.clear()
+        
+        # Base directory and name
         model_dir = os.path.normpath(self.get_persistant_path())
         model_name = os.path.basename(model_dir)
         model_dir = model_dir[:-len(model_name)]
@@ -194,9 +203,13 @@ class Experiment(object):
         self.__on_run = on_run
 
     def _continue_loading(self, callback, model, is_using_initialized_model):
+        # Save paths and call callback
         self.__model_components = model
         self.__is_using_initialized_model = is_using_initialized_model
         callback(self)
+        
+        # Singnal ready
+        self.__done_loading.set()
 
     def assert_initialized(self):
         assert self.__is_using_initialized_model, "This model is not initialized"
@@ -323,8 +336,11 @@ class ExperimentRun(object):
         self.experiment = experiment
         self.mode = mode
 
+        # Create bars now, won't work properly later
+        self.__epochs_bar = bar()
+        self.__steps_bar = bar()
+        
         # To allow execution re-attaching
-        self.__steps_bar = None
         self.__step = -1
         self.__stop = False
 
@@ -367,8 +383,16 @@ class ExperimentRun(object):
     def wait_ready(self):
         self.__ready.wait()
 
+    def _run(self, *args, **kwargs):
+        try:
+            self._run_unsafe(*args, **kwargs)
+        finally:
+            # Ensure ready is set if something fails
+            # Might be already set, it is not a problem
+            self.__ready.set()
+        
     @discover.GO.capture
-    def _run(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+    def _run_unsafe(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
 
@@ -376,7 +400,7 @@ class ExperimentRun(object):
             with tf.Session(config=config or default_config()) as sess:
                 # Create step and dataset iterator
                 global_step = tf.train.get_or_create_global_step()
-                dataset = dataset_fn(self.mode)
+                dataset = dataset_fn(self.mode, self.experiment.params)
                 itr = dataset.make_one_shot_iterator()
 
                 # Test has no y
@@ -394,7 +418,7 @@ class ExperimentRun(object):
 
                     if isinstance(v, dict):
                         input_tensors += list(x.values())
-
+                
                 # Get outputs from model
                 with tf.control_dependencies(input_tensors):
                     model = self.experiment(self.mode)
@@ -424,7 +448,7 @@ class ExperimentRun(object):
                 if ckpt is not None:
                     print('Restoring from {}'.format(ckpt.model_checkpoint_path))
                     saver.restore(sess, ckpt.model_checkpoint_path)
-
+                
                 # Checkpoints?
                 if checkpoint_steps is not None:
                     self.__checkpoint_hook = ExperimentHook(
@@ -436,7 +460,7 @@ class ExperimentRun(object):
                     hooks.append(self.__checkpoint_hook)
     
                 # Summaries?
-                if summary_steps is not None:
+                if summary_steps is not None and merged is not None:
                     self.__summaries_hook = ExperimentHook(
                         name='Summaries',
                         steps=summary_steps,
@@ -450,16 +474,16 @@ class ExperimentRun(object):
                     standard_feed = [global_step, outputs.loss, outputs.train_op]
                 else:
                     standard_feed = [global_step, outputs.loss, []]
-
+                                
                 # Signal it is ready
                 first = True
                 self.__ready.set()
-
+                
                 # Up to epochs
-                for epoch in bar(range(epochs)):
-                    self.__steps_bar = bar()
-
+                for self.__epoch in range(epochs):                    
                     try:
+                        ended = False
+                    
                         while not self.__stop:
                             # Lock
                             with self.__run_lock:
@@ -478,6 +502,8 @@ class ExperimentRun(object):
                                 for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
                                     hook(self.experiment, self.__step, *hooks_output[idx])
 
+                        ended = True
+                        self.__epochs_bar.update(1)
                     except tf.errors.OutOfRangeError:
                         # It's ok, one epoch done
                         pass
@@ -485,8 +511,11 @@ class ExperimentRun(object):
                         # Exit gracefully
                         break
                     finally:
-                        print('Closing bar')
-                        self.__steps_bar.close()
+                        # GUI Mode error?
+                        if not ended and hasattr(self.__steps_bar, 'sp'):
+                            self.__steps_bar.sp(bar_style='danger')
+                        else:
+                            self.__steps_bar.close()
 
                     if self.__stop:
                         break
