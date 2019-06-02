@@ -164,12 +164,8 @@ class GlobalOutput(object):
         
     def redirect_tf_logging(self):        
         # Hack tensorflow logging
-        global _logger
-        try:
-            tf_logger = _logger 
-        except:
-            tf_logger = logging.getLogger('tensorflow')
-            
+        tf_logger = tf.get_logger()
+        
         for handler in tf_logger.handlers[:]:
             tf_logger.removeHandler(handler)
         
