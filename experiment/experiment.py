@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
 from .data import DataType, FetchMethod, UriType
-from .utils import discover
+from .utils import discover, redirect
 from .mode import Mode
 
                     
@@ -196,7 +196,7 @@ class Experiment(object):
         model_dir = model_dir[:-len(model_name)]
 
         # Discover models
-        return discover.discover(model_dir, model_name, lambda *args: self._continue_loading(callback, *args), 
+        return discover.discover(self, model_dir, model_name, lambda *args: self._continue_loading(callback, *args), 
                           prepend_timestamp, append_timestamp, delete_existing, force_ascii_discover, force_last)
 
     def run_remote(self, on_run):
@@ -391,7 +391,7 @@ class ExperimentRun(object):
             # Might be already set, it is not a problem
             self.__ready.set()
         
-    @discover.GO.capture
+    @redirect.capture_output
     def _run_unsafe(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
@@ -402,7 +402,7 @@ class ExperimentRun(object):
                 global_step = tf.train.get_or_create_global_step()
                 dataset = dataset_fn(self.mode, self.experiment.params)
                 itr = dataset.make_one_shot_iterator()
-
+                
                 # Test has no y
                 if self.mode == Mode.TEST:
                     x = itr.get_next()
@@ -489,7 +489,7 @@ class ExperimentRun(object):
                             with self.__run_lock:
                                 # Other requests of hooks
                                 hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + int(first or self.mode == Mode.TRAIN))]
-
+                                
                                 # Run session
                                 self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
                             
