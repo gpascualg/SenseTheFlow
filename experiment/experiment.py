@@ -250,7 +250,8 @@ class ExperimentOutput(object):
         assert _sentinel is None, "Please use named arguments, outputs=x, etc."
         self.outputs = outputs
         self.train_op = train_op
-        self.loss = loss
+        self.loss = tf.convert_to_tensor(loss or 0.0)
+        self.has_loss = loss is not None
 
 class ExperimentHook(object):
     def __init__(self, name, steps, callback, concurrent=True, args=()):
