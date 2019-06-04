@@ -263,17 +263,20 @@ class ExperimentHook(object):
         self.__args = args
         self.__now = Event()
         self.__ready = Event()
+        self.__skip_after_error = False
 
     def ready(self, step):
-        return self.__now.is_set() or (step % self.__steps) == 0
+        return not self.__skip_after_error and (self.__now.is_set() or (step % self.__steps) == 0)
 
-    def __call_callback(self, step, *args):
+    def _call_callback(self, experiment, step, *args):
         try:
             self.__callback(step, *args, *self.__args)
+        
+        # We can't have exceptions interrumpting the whole process
         except Exception as e:
-            # We can't have exceptions interrumpting the whole process
-            if self.__concurrent:
-                tb.print_exc()
+            self.__skip_after_error = True
+            print('Error on hook {} -> Disabling hook'.format(self.name), file=sys.stderr)
+            tb.print_exc()
         finally:
             self.__ready.set()
 
@@ -282,9 +285,9 @@ class ExperimentHook(object):
         self.__ready.clear()
 
         if self.__concurrent:
-            experiment.post_job(self.__call_callback, step, *args)
+            experiment.post_job(self._call_callback, experiment, step, *args)
         else:
-            self.__call_callback(step, *args)
+            self._call_callback(experiment, step, *args)
 
     def tensors(self):
         return self.__tensors
@@ -495,7 +498,7 @@ class ExperimentRun(object):
                                 self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
                             
                                 # Update bar
-                                self.__steps_bar.set_description('Loss: {:.2f}'.format(loss or '?'))
+                                self.__steps_bar.set_description('Loss: {:.2f}'.format(loss))
                                 self.__steps_bar.update(1 if not first else self.__step)
                                 first = False
 

@@ -9,17 +9,20 @@ from ...config import is_jupyter
 
 
 def _get_caller(offset=2):
-    from ..experiment import ExperimentRun
+    from ..experiment import ExperimentRun, ExperimentHook
     
     f0 = sys._getframe(offset)
-    our_code = ExperimentRun._run.__code__    
+    
+    experiment_run_code = ExperimentRun._run.__code__
+    experiment_hook_code = ExperimentHook._call_callback.__code__
     
     # Search for a global experiment first
     f = f0.f_back
     while f:
-        code = f.f_code
-        if code == our_code:
+        if f.f_code == experiment_run_code:
             return f.f_locals['self'].experiment
+        if f.f_code == experiment_hook_code:
+            return f.f_locals['experiment']
         f = f.f_back
         
     # Search for a forwarded function
@@ -70,12 +73,12 @@ class GlobalOutput(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         return Redirect().exit(exc_type, exc_val, exc_tb)
             
-    def forward(self, fn, *args, **kwargs):
+    def forward(self, fn, *args, experiment=None, **kwargs):
         @GlobalOutput.Instance.capture
         def _impl():
             return fn(*args, **kwargs)
         
-        GlobalOutput.Forwards[fn.__code__] = self.__experiment
+        GlobalOutput.Forwards[fn.__code__] = experiment or self.__experiment
         return _impl()
 
 class Redirect(object):
@@ -163,7 +166,7 @@ class Redirect(object):
             self.__count -= 1
             
             # Print exception manually, otherwise we won't see it
-            if exc_type is not None:                    
+            if exc_type is not None:
                 tb.print_exc()
                     
             if self.__count == 0:                    
@@ -181,5 +184,21 @@ def capture_output(fn):
         return _impl()
     return wrapper
 
-def forward(fn, *args, **kwargs):
-    return GlobalOutput.Instance.forward(fn, *args, **kwargs)
+def forward(fn, *args, experiment=None, **kwargs):
+    return GlobalOutput.Instance.forward(fn, *args, experiment=experiment, **kwargs)
+
+## HACKY AREA - Make sure we capture dataset outputs
+
+_from_generator = tf.data.Dataset.from_generator
+
+@staticmethod
+def patched_from_generator(generator, output_types, output_shapes=None, args=None):
+    return _from_generator(
+        generator=lambda: forward(generator),
+        output_types=output_types,
+        output_shapes=output_shapes,
+        args=args
+    )
+
+tf.data.Dataset.from_generator = patched_from_generator
+
