@@ -115,15 +115,16 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     import ipywidgets as widgets
     from IPython.display import display
 
-    options = [('/'.join(x.components) + ('' if idx > 0 else ' *'), idx) for idx, x in enumerate(candidates)]
+    options = [(' |- ' + '/'.join(x.components) + ('' if idx > 0 else ' *'), idx) for idx, x in enumerate(candidates)]
 
     select = widgets.Select(
         options=[
-            ('-- Select a model --', None),
-            ('-- Create new --', -1),
-            ('-- Remove prev and create new --', -2)
+            ('-', None),
+            (' |- Create new model', -1),
+            (' |- Remove previous and create new', -2),
+            ('-', None)
         ] + options,
-        index=0,
+        index=None,
         disabled=False
     )
 
@@ -131,14 +132,29 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     def on_change(change):
         if change['type'] == 'change' and change['name'] == 'value':
             idx = change['new']
+            if idx is None:
+                return
+            
             if idx == -2 and candidates:
-                if delete_existing == 'force' or _ask('Are you sure? [yes/no]: ', ('yes', 'y', 'no', 'n')) in ('y', 'yes'):
+                if delete_existing == 'force':
                     rmtree(candidates[0].model_dir)
                 else:
+                    select.index = None
+                    select.options = (
+                        ('-', None),
+                        (' |- Confirm deleting {}'.format('/'.join(candidates[0].components) ), -3),
+                        (' |- Abort', -4)
+                    )
                     return
-
-            initialized = idx not in (-1, -2)
+            elif idx == -3:
+                rmtree(candidates[0].model_dir)
+                
+            initialized = idx not in (-1, -2, -3)
             select.close()
+            
+            # Aborted deletion
+            if idx == -4:
+                return
 
             if not initialized:
                 model = _create_model(
@@ -157,6 +173,7 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     display(select)
 
     # Listen for changes
+    select.index = None
     select.observe(on_change)
 
 def discover(experiment, model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
