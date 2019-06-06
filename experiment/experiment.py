@@ -358,11 +358,16 @@ class ExperimentRun(object):
 
     def reattach(self):
         with self.__run_lock:
+            # Close current bar, if any
             if self.__steps_bar is not None:
                 self.__steps_bar.close()
         
+            # Create new bar
             self.__steps_bar = bar()
             self.__steps_bar.update(self.__step)
+            
+            # Recreate output capturing
+            redirect.GlobalOuput().create()
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
