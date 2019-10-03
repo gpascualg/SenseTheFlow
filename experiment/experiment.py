@@ -218,30 +218,30 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
+    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
         run = ExperimentRun(self, Mode.TRAIN)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, 
-            summary_steps=summary_steps, sync=sync)
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+            hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, summary_steps=summary_steps, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
+    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
-            summary_steps=summary_steps, sync=sync)
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+            hooks_fn=hooks_fn, checkpoint_steps=None, summary_steps=summary_steps, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, summary_steps=100, sync=False):
+    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, summary_steps=100, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.TEST)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, warm_start_fn=warm_start_fn, hooks_fn=hooks_fn, checkpoint_steps=None, 
-            summary_steps=summary_steps, sync=sync)
+        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+            hooks_fn=hooks_fn, checkpoint_steps=None, summary_steps=summary_steps, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -367,7 +367,7 @@ class ExperimentRun(object):
             self.__steps_bar.update(self.__step)
             
             # Recreate output capturing
-            redirect.GlobalOuput().create()
+            redirect.GlobalOutput().create()
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
@@ -401,7 +401,7 @@ class ExperimentRun(object):
             self.__ready.set()
         
     @redirect.capture_output
-    def _run_unsafe(self, dataset_fn, epochs=1, config=None, warm_start_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+    def _run_unsafe(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
 
@@ -447,10 +447,9 @@ class ExperimentRun(object):
                 saver = tf.train.Saver(filename=os.path.join(model_dir, 'model.ckpt'))
                 
                 # Run once
+                pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, sess)
                 sess.run(tf.global_variables_initializer())
-
-                # Warm start hooks
-                warm_start_fn and warm_start_fn(self.experiment, model, self.mode, sess)
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, sess)
                 
                 # Restore if there is anything to restore from
                 ckpt = tf.train.get_checkpoint_state(model_dir) 
@@ -533,7 +532,7 @@ class ExperimentRun(object):
         self.experiment.free_gpu(gpu)
 
 
-def keras_weight_loader(module, model, include_top, weights='imagenet'):
+def keras_weight_path(module, include_top, weights='imagenet'):
     if weights == 'imagenet':
         if include_top:
             weights_path = tf.keras.utils.get_file(
@@ -546,4 +545,8 @@ def keras_weight_loader(module, model, include_top, weights='imagenet'):
                 module.WEIGHTS_PATH_NO_TOP,
                 cache_subdir='models')
         
-        model.load_weights(weights_path)
+        return weights_path
+
+def keras_weight_loader(module, model, include_top, weights='imagenet', by_name=False):
+    model.load_weights(keras_weight_path(module, include_top, weights), by_name=by_name)
+

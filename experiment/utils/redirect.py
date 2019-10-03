@@ -117,6 +117,13 @@ class Redirect(object):
             if caller is None or experiment is None:
                 return self.fn.flush(*args, **kwargs)
         
+        def isatty(self):
+            caller = _get_caller()
+            experiment = GlobalOutput.Maps.get(caller)
+            if caller is None or experiment is None:
+                return self.fn.isatty()
+            return False
+
         # IPython has methods to focus different outputs, fake them
         def __getattr__(self, attr):
             caller = _get_caller()
