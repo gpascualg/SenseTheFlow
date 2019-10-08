@@ -4,6 +4,7 @@ import copy
 import sys
 import tensorflow as tf
 import traceback as tb
+import semantic_version as sv
 
 from threading import Thread, Event, Lock, Condition
 from concurrent.futures import ThreadPoolExecutor
@@ -356,6 +357,9 @@ class ExperimentRun(object):
         self.__ready = Event()
         self.__run_lock = Lock()
 
+        # Exit code
+        self.__reason = None
+
     def reattach(self):
         with self.__run_lock:
             # Close current bar, if any
@@ -367,7 +371,7 @@ class ExperimentRun(object):
             self.__steps_bar.update(self.__step)
             
             # Recreate output capturing
-            redirect.GlobalOutput().create()
+            redirect.GlobalOutput(self.experiment).create()
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
@@ -380,6 +384,9 @@ class ExperimentRun(object):
     def stop(self):
         with self.__run_lock:
             self.__stop = True
+
+    def exit_reason(self):
+        return self.__reason
 
     # The user won't see this at all
     def run(self, *args, **kwargs):
@@ -394,14 +401,20 @@ class ExperimentRun(object):
 
     def _run(self, *args, **kwargs):
         try:
-            self._run_unsafe(*args, **kwargs)
+            if sv.Version(tf.__version__).major == 1:
+                self._run_unsafe_1x(*args, **kwargs)
+            else:
+                self._run_unsafe_2x(*args, **kwargs)
+        except:
+            _, _, exc_traceback = sys.exc_info()
+            self.__reason = tb.extract_tb(exc_traceback)
         finally:
             # Ensure ready is set if something fails
             # Might be already set, it is not a problem
             self.__ready.set()
         
     @redirect.capture_output
-    def _run_unsafe(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+    def _run_unsafe_1x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
 
@@ -431,7 +444,7 @@ class ExperimentRun(object):
                 # Get outputs from model
                 with tf.control_dependencies(input_tensors):
                     model = self.experiment(self.mode)
-                    outputs = model(x, y, self.mode, self.experiment.params)
+                    outputs = model((x, y), self.mode, self.experiment.params)
                     assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
                     assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
 
@@ -531,6 +544,49 @@ class ExperimentRun(object):
         # Free current GPU
         self.experiment.free_gpu(gpu)
 
+    @redirect.capture_output
+    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+        # Get a GPU for execution
+        gpu = self.experiment.get_gpu()
+
+        @tf.function
+        def step_fn(self, model, data, step):
+            with tf.GradientTape() as tape:
+                outputs = model(data, step, self.mode, self.experiment.params)
+            gradients = tape.gradient(outputs.loss, model.trainable_variables)
+            model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            return outputs
+
+        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(gpu)):
+            dataset = dataset_fn(self.mode, self.experiment.params)
+            model = self.experiment(self.mode)
+            step = tf.Variable(1)
+
+            assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
+
+            model_dir = self.experiment.get_model_directory()
+            ckpt = tf.train.Checkpoint(step=step, optimizer=model.optimizer, net=model)
+            manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
+            ckpt.restore(manager.latest_checkpoint)
+            if manager.latest_checkpoint:
+                print("Restored from {}".format(manager.latest_checkpoint))
+            else:
+                print("Initializing from scratch.")
+
+            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
+            with writer.as_default():
+                for self.__epoch in range(epochs):
+                    for data in dataset:
+                        outputs = step_fn(self, model, data, step)
+                        hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
+                        step.assign_add(1)
+
+                        if int(step) % checkpoint_steps == 0:
+                            save_path = manager.save()
+                            print("Saved checkpoint for step {}: {}".format(int(step), save_path))
+
+        # Free current GPU
+        self.experiment.free_gpu(gpu)
 
 def keras_weight_path(module, include_top, weights='imagenet'):
     if weights == 'imagenet':
