@@ -2,7 +2,7 @@ import tensorflow as tf
 from .utils import channel_dim, to_data_format
 
 
-class GroupNorm(tf.layers.Layer):
+class GroupNorm(tf.keras.layers.Layer):
   def __init__(self, G, esp, data_format='channels_last', **kwargs):
     self.G = G
     self.esp = esp
