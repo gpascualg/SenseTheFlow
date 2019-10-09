@@ -564,6 +564,8 @@ class ExperimentRun(object):
 
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
+            pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, None)
+
             model_dir = self.experiment.get_model_directory()
             ckpt = tf.train.Checkpoint(step=step, optimizer=model.optimizer, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
@@ -572,6 +574,8 @@ class ExperimentRun(object):
                 print("Restored from {}".format(manager.latest_checkpoint))
             else:
                 print("Initializing from scratch.")
+
+            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
 
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             with writer.as_default():
