@@ -13,7 +13,7 @@ from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
 from .data import DataType, FetchMethod, UriType
 from .utils import discover, redirect
-from .mode import Mode
+from .mode import Mode, Hookpoint
 
                     
 def default_config():
@@ -77,6 +77,18 @@ class Experiment(object):
         self.__pool_count = 0
         self.__max_concurrent_hooks = max_concurrent_hooks
         self.__pool_cond = Condition()
+
+        # Hooks
+        self.__hooks = {
+            Hookpoint.GRADIENT: [],
+            Hookpoint.LOOP: []
+        }
+
+    def add_hook(self, hookpoint, hook):
+        self.__hooks[hookpoint].append(hook)
+
+    def get_hooks(self, hookpoint):
+        return self.__hooks[hookpoint]
 
     def post_job(self, fn, *args, **kwargs):
         with self.__pool_cond:
@@ -247,6 +259,12 @@ class Experiment(object):
         return context_or_none
 
 class ExperimentOutput(object):
+    def __new__(cls, **kwargs):
+        if sv.Version(tf.__version__).major == 1:
+            return object.__new__(cls)
+
+        return kwargs
+
     def __init__(self, _sentinel=None, outputs=None, train_op=None, loss=None):
         assert _sentinel is None, "Please use named arguments, outputs=x, etc."
         self.outputs = outputs
@@ -271,7 +289,7 @@ class ExperimentHook(object):
 
     def _call_callback(self, experiment, step, *args):
         try:
-            self.__callback(step, *args, *self.__args)
+            return self.__callback(step, *args, *self.__args)
         
         # We can't have exceptions interrumpting the whole process
         except Exception as e:
@@ -280,6 +298,8 @@ class ExperimentHook(object):
             tb.print_exc()
         finally:
             self.__ready.set()
+
+        return None
 
     def __call__(self, experiment, step, *args):
         self.__now.clear()
@@ -546,21 +566,22 @@ class ExperimentRun(object):
 
     @redirect.capture_output
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
-        # Get a GPU for execution
-        gpu = self.experiment.get_gpu()
-
         @tf.function
-        def step_fn(self, model, data, step):
+        def step_fn(data, step):
             with tf.GradientTape() as tape:
-                outputs = model(data, step, self.mode, self.experiment.params)
-            gradients = tape.gradient(outputs.loss, model.trainable_variables)
+                outputs = model(data, step)
+            
+            gradients = tape.gradient(outputs['loss'], model.trainable_variables)
+            # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
             model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             return outputs
 
-        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(gpu)):
+        # Get a GPU for execution
+        gpu = self.experiment.get_gpu()
+        with tf.device('/gpu:{}'.format(gpu)):
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
-            step = tf.Variable(1)
+            step = tf.Variable(1, dtype=tf.int64)
 
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
@@ -575,19 +596,38 @@ class ExperimentRun(object):
             else:
                 print("Initializing from scratch.")
 
-            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
-
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
-            with writer.as_default():
-                for self.__epoch in range(epochs):
-                    for data in dataset:
-                        outputs = step_fn(self, model, data, step)
-                        hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
-                        step.assign_add(1)
+            self.__ready.set()
 
-                        if int(step) % checkpoint_steps == 0:
-                            save_path = manager.save()
-                            print("Saved checkpoint for step {}: {}".format(int(step), save_path))
+            def do_iter(data):
+                outputs = step_fn(data, step)
+                hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
+                step.assign_add(1)
+
+                self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
+                self.__steps_bar.update(1)
+
+                if int(step) % checkpoint_steps == 0:
+                    save_path = manager.save()
+                    print("Saved checkpoint for step {}: {}".format(int(step), save_path))
+
+                for hook in self.experiment.get_hooks(Hookpoint.LOOP):
+                    if hook.ready(int(step)):
+                        hook(self.experiment, int(step), outputs, model)
+
+            with writer.as_default():
+                # Manually call first iter, as to build the model
+                for data in dataset:
+                    do_iter(data)
+                    break
+ 
+                # Post initialize hooks
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
+
+                # Run it all
+                for self.epoch in range(epochs):
+                    for data in dataset:
+                        do_iter(data)
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
