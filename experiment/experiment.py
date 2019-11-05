@@ -613,7 +613,7 @@ class ExperimentRun(object):
 
                 for hook in self.experiment.get_hooks(Hookpoint.LOOP):
                     if hook.ready(int(step)):
-                        hook(self.experiment, int(step), outputs, model)
+                        hook(self.experiment, int(step), data, outputs, model)
 
             with writer.as_default():
                 # Manually call first iter, as to build the model
