@@ -567,7 +567,7 @@ class ExperimentRun(object):
     @redirect.capture_output
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
         @tf.function
-        def step_fn(data, step):
+        def train_fn(data, step):
             with tf.GradientTape() as tape:
                 outputs = model(data, step)
             
@@ -575,6 +575,10 @@ class ExperimentRun(object):
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
             model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             return outputs
+
+        @tf.function
+        def test_fn(data, step):
+            return model(data, step)
 
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
@@ -590,7 +594,8 @@ class ExperimentRun(object):
             model_dir = self.experiment.get_model_directory()
             ckpt = tf.train.Checkpoint(step=step, optimizer=model.optimizer, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
-            ckpt.restore(manager.latest_checkpoint)
+            restore_status = ckpt.restore(manager.latest_checkpoint)
+
             if manager.latest_checkpoint:
                 print("Restored from {}".format(manager.latest_checkpoint))
             else:
@@ -599,7 +604,7 @@ class ExperimentRun(object):
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
-            def do_iter(data):
+            def do_iter(data, step_fn):
                 outputs = step_fn(data, step)
                 hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
                 step.assign_add(1)
@@ -616,18 +621,24 @@ class ExperimentRun(object):
                         hook(self.experiment, int(step), data, outputs, model)
 
             with writer.as_default():
+                # Select function
+                step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
+
                 # Manually call first iter, as to build the model
                 for data in dataset:
-                    do_iter(data)
+                    do_iter(data, step_fn)
                     break
- 
+
+                # Make sure it is restored
+                restore_status.assert_consumed()
+
                 # Post initialize hooks
                 post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
 
                 # Run it all
                 for self.epoch in range(epochs):
                     for data in dataset:
-                        do_iter(data)
+                        do_iter(data, step_fn)
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
