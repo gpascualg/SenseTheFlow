@@ -612,7 +612,7 @@ class ExperimentRun(object):
                 self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
                 self.__steps_bar.update(1)
 
-                if int(step) % checkpoint_steps == 0:
+                if checkpoint_steps and (int(step) % checkpoint_steps) == 0:
                     save_path = manager.save()
                     print("Saved checkpoint for step {}: {}".format(int(step), save_path))
 
