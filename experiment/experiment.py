@@ -630,7 +630,7 @@ class ExperimentRun(object):
                     break
 
                 # Make sure it is restored
-                restore_status.assert_consumed()
+                restore_status.assert_existing_objects_matched()
 
                 # Post initialize hooks
                 post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
