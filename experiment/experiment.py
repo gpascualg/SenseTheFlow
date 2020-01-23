@@ -594,11 +594,14 @@ class ExperimentRun(object):
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
-            restore_status = pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, ckpt)
+            restore_information = pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, ckpt)
+            if not isinstance(restore_information, (tuple, list)):
+                restore_information = restore_information, restore_information.assert_existing_objects_matched
 
             # Restore from checkpoint
             if manager.latest_checkpoint:
                 restore_status = ckpt.restore(manager.latest_checkpoint)
+                restore_information = restore_status, restore_status.assert_existing_objects_matched
                 print("Restored from {}".format(manager.latest_checkpoint))
                 print(restore_status)
             else:
@@ -633,8 +636,8 @@ class ExperimentRun(object):
                     break
 
                 # Make sure it is restored
-                if restore_status:
-                    restore_status.assert_existing_objects_matched()
+                if restore_information:
+                    restore_information[1]()
 
                 # Post initialize hooks
                 post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
