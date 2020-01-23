@@ -589,15 +589,18 @@ class ExperimentRun(object):
 
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
-            pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, None)
-
             model_dir = self.experiment.get_model_directory()
             ckpt = tf.train.Checkpoint(step=step, optimizer=model.optimizer, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
-            restore_status = ckpt.restore(manager.latest_checkpoint)
 
+            # Do we have to warm start?
+            restore_status = pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, ckpt)
+
+            # Restore from checkpoint
             if manager.latest_checkpoint:
+                restore_status = ckpt.restore(manager.latest_checkpoint)
                 print("Restored from {}".format(manager.latest_checkpoint))
+                print(restore_status)
             else:
                 print("Initializing from scratch.")
 
@@ -630,7 +633,7 @@ class ExperimentRun(object):
                     break
 
                 # Make sure it is restored
-                if manager.latest_checkpoint:
+                if restore_status:
                     restore_status.assert_existing_objects_matched()
 
                 # Post initialize hooks
