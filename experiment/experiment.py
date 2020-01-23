@@ -595,7 +595,7 @@ class ExperimentRun(object):
 
             # Do we have to warm start?
             restore_information = pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, ckpt)
-            if not isinstance(restore_information, (tuple, list)):
+            if restore_information and not isinstance(restore_information, (tuple, list)):
                 restore_information = restore_information, restore_information.assert_existing_objects_matched
 
             # Restore from checkpoint
@@ -640,7 +640,7 @@ class ExperimentRun(object):
                     restore_information[1]()
 
                 # Post initialize hooks
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, None)
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
 
                 # Run it all
                 for self.epoch in range(epochs):
