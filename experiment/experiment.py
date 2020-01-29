@@ -569,7 +569,7 @@ class ExperimentRun(object):
         @tf.function
         def train_fn(data, step):
             with tf.GradientTape() as tape:
-                outputs = model(data, step)
+                outputs = model(data, training=True, step=step)
             
             gradients = tape.gradient(outputs['loss'], model.trainable_variables)
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
@@ -578,14 +578,14 @@ class ExperimentRun(object):
 
         @tf.function
         def test_fn(data, step):
-            return model(data, step)
+            return model(data, training=False, step=step)
 
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
         with tf.device('/gpu:{}'.format(gpu)):
+            step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
-            step = tf.Variable(1, dtype=tf.int64)
 
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
@@ -610,42 +610,43 @@ class ExperimentRun(object):
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
-            def do_iter(data, step_fn):
-                outputs = step_fn(data, step)
-                hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
-                step.assign_add(1)
-
-                self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
-                self.__steps_bar.update(1)
-
-                if checkpoint_steps and (int(step) % checkpoint_steps) == 0:
-                    save_path = manager.save()
-                    print("Saved checkpoint for step {}: {}".format(int(step), save_path))
-
-                for hook in self.experiment.get_hooks(Hookpoint.LOOP):
-                    if hook.ready(int(step)):
-                        hook(self.experiment, int(step), data, outputs, model)
-
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
-
-                # Manually call first iter, as to build the model
-                for data in dataset:
-                    do_iter(data, step_fn)
-                    break
-
-                # Make sure it is restored
-                if restore_information:
-                    restore_information[1]()
-
-                # Post initialize hooks
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-
+            
                 # Run it all
                 for self.epoch in range(epochs):
                     for data in dataset:
-                        do_iter(data, step_fn)
+                        # Do the actual iter
+                        outputs = step_fn(data, step)
+                        step.assign_add(1)
+                        int_step = int(step)
+
+                        # If first step, check restoration and post_initialize hooks
+                        if int_step == 1:
+                            # Make sure it is restored
+                            if restore_information:
+                                restore_information[1]()
+
+                            # Post initialize hooks
+                            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+                        # Update tqdm
+                        self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
+                        self.__steps_bar.update(1)
+                            
+                        # Custom hooks [DEPRECATED]
+                        hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
+
+                        # Save checkpoints
+                        if self.mode == Mode.TRAIN and checkpoint_steps and (int_step % checkpoint_steps) == 0:
+                            save_path = manager.save()
+                            print("Saved checkpoint for step {}: {}".format(int_step, save_path))
+
+                        # User hooks
+                        for hook in self.experiment.get_hooks(Hookpoint.LOOP):
+                            if hook.ready(int_step):
+                                hook(self.experiment, int_step, data, outputs, model)
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
