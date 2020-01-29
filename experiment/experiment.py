@@ -570,8 +570,9 @@ class ExperimentRun(object):
         def train_fn(data, step):
             with tf.GradientTape() as tape:
                 outputs = model(data, training=True, step=step)
+                loss = outputs['loss'] + tf.add_n(model.losses)
             
-            gradients = tape.gradient(outputs['loss'], model.trainable_variables)
+            gradients = tape.gradient(loss, model.trainable_variables)
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
             model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             return outputs
