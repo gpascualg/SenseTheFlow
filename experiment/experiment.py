@@ -231,30 +231,30 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=False):
+    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=False):
         run = ExperimentRun(self, Mode.TRAIN)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            hooks_fn=hooks_fn, checkpoint_steps=checkpoint_steps, summary_steps=summary_steps, sync=sync)
+            checkpoint_steps=checkpoint_steps, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, summary_steps=100, sync=False):
+    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            hooks_fn=hooks_fn, checkpoint_steps=None, summary_steps=summary_steps, sync=sync)
+            checkpoint_steps=None, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, summary_steps=100, sync=False):
+    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.TEST)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            hooks_fn=hooks_fn, checkpoint_steps=None, summary_steps=summary_steps, sync=sync)
+            checkpoint_steps=None, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -401,6 +401,10 @@ class ExperimentRun(object):
         if block:
             self.__checkpoint_hook.wait()
 
+    def __save(self, step, inputs, outputs, model, manager):
+        save_path = manager.save()
+        print("Saved checkpoint for step {}: {}".format(step, save_path))
+
     def stop(self):
         with self.__run_lock:
             self.__stop = True
@@ -422,7 +426,7 @@ class ExperimentRun(object):
     def _run(self, *args, **kwargs):
         try:
             if sv.Version(tf.__version__).major == 1:
-                self._run_unsafe_1x(*args, **kwargs)
+                raise NotImplementedError('Tensorflow 1.x support has been deprecated')
             else:
                 self._run_unsafe_2x(*args, **kwargs)
         except:
@@ -432,140 +436,9 @@ class ExperimentRun(object):
             # Ensure ready is set if something fails
             # Might be already set, it is not a problem
             self.__ready.set()
-        
-    @redirect.capture_output
-    def _run_unsafe_1x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
-        # Get a GPU for execution
-        gpu = self.experiment.get_gpu()
-
-        with tf.Graph().as_default(), tf.device('/gpu:{}'.format(gpu)):
-            with tf.Session(config=config or default_config()) as sess:
-                # Create step and dataset iterator
-                global_step = tf.train.get_or_create_global_step()
-                dataset = dataset_fn(self.mode, self.experiment.params)
-                itr = dataset.make_one_shot_iterator()
-                
-                # Test has no y
-                if self.mode == Mode.TEST:
-                    x = itr.get_next()
-                    y = None
-                else:
-                    x, y = itr.get_next()
-
-                # Input tensors to control deps
-                input_tensors = []
-                for v in (x, y):
-                    if isinstance(v, (list, tuple)):
-                        input_tensors += v
-
-                    if isinstance(v, dict):
-                        input_tensors += list(x.values())
-                
-                # Get outputs from model
-                with tf.control_dependencies(input_tensors):
-                    model = self.experiment(self.mode)
-                    outputs = model((x, y), self.mode, self.experiment.params)
-                    assert isinstance(outputs, ExperimentOutput), "Output from model __call__ should be ExperimentOutput"
-                    assert self.mode != Mode.TRAIN or outputs.train_op is not None, "During training outputs.train_op must be defined"
-
-                # Any more hooks to be created
-                hooks = (hooks_fn and hooks_fn(self.experiment, model, self.mode, x, y, outputs)) or []
-
-                # Prep summaries and checkpoints
-                model_dir = self.experiment.get_model_directory()
-                merged = tf.summary.merge_all()
-                writer = tf.summary.FileWriter(os.path.join(model_dir, self.mode.value), sess.graph)
-        
-                # Checkpoints
-                saver = tf.train.Saver(filename=os.path.join(model_dir, 'model.ckpt'))
-                
-                # Run once
-                pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, sess)
-                sess.run(tf.global_variables_initializer())
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, sess)
-                
-                # Restore if there is anything to restore from
-                ckpt = tf.train.get_checkpoint_state(model_dir) 
-                if ckpt is not None:
-                    print('Restoring from {}'.format(ckpt.model_checkpoint_path))
-                    saver.restore(sess, ckpt.model_checkpoint_path)
-                
-                # Checkpoints?
-                if checkpoint_steps is not None:
-                    self.__checkpoint_hook = ExperimentHook(
-                        name='Checkpoint',
-                        steps=checkpoint_steps,
-                        callback=lambda step: saver.save(sess, os.path.join(model_dir, 'model.ckpt'), global_step=step),
-                        concurrent=False
-                    )
-                    hooks.append(self.__checkpoint_hook)
-    
-                # Summaries?
-                if summary_steps is not None and merged is not None:
-                    self.__summaries_hook = ExperimentHook(
-                        name='Summaries',
-                        steps=summary_steps,
-                        callback=lambda step, merged: writer.add_summary(merged, step)
-                    )
-                    self.__summaries_hook.needs(merged)
-                    hooks.append(self.__summaries_hook)
-
-                # Standard requested tensors
-                if self.mode == Mode.TRAIN:
-                    standard_feed = [global_step, outputs.loss, outputs.train_op]
-                else:
-                    standard_feed = [global_step, outputs.loss, []]
-                                
-                # Signal it is ready
-                first = True
-                self.__ready.set()
-                
-                # Up to epochs
-                for self.__epoch in range(epochs):                    
-                    try:
-                        ended = False
-                    
-                        while not self.__stop:
-                            # Lock
-                            with self.__run_lock:
-                                # Other requests of hooks
-                                hooks_feed = [hook.tensors() for hook in hooks if hook.ready(self.__step + int(first or self.mode == Mode.TRAIN))]
-                                
-                                # Run session
-                                self.__step, loss, _, *hooks_output = sess.run(standard_feed + hooks_feed)
-                            
-                                # Update bar
-                                self.__steps_bar.set_description('Loss: {:.2f}'.format(loss))
-                                self.__steps_bar.update(1 if not first else self.__step)
-                                first = False
-
-                                # Call all hooks
-                                for idx, hook in enumerate(hook for hook in hooks if hook.ready(self.__step)):
-                                    hook(self.experiment, self.__step, *hooks_output[idx])
-
-                        ended = True
-                        self.__epochs_bar.update(1)
-                    except tf.errors.OutOfRangeError:
-                        # It's ok, one epoch done
-                        pass
-                    except KeyboardInterrupt:
-                        # Exit gracefully
-                        break
-                    finally:
-                        # GUI Mode error?
-                        if not ended and hasattr(self.__steps_bar, 'sp'):
-                            self.__steps_bar.sp(bar_style='danger')
-                        else:
-                            self.__steps_bar.close()
-
-                    if self.__stop:
-                        break
-
-        # Free current GPU
-        self.experiment.free_gpu(gpu)
 
     @redirect.capture_output
-    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, hooks_fn=None, checkpoint_steps=1000, summary_steps=100, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
         @tf.function
         def train_fn(data, step):
             with tf.GradientTape() as tape:
@@ -608,6 +481,11 @@ class ExperimentRun(object):
             else:
                 print("Initializing from scratch.")
 
+            # Create checkpoint hook if checkpoints enabled
+            self.__checkpoint_hook = ExperimentHook('checkpoint-iters', checkpoint_steps, self.__save, concurrent=False, args=(manager,))
+            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook)
+
+            # Summaries and signal ready
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
@@ -635,14 +513,6 @@ class ExperimentRun(object):
                         # Update tqdm
                         self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
                         self.__steps_bar.update(1)
-                            
-                        # Custom hooks [DEPRECATED]
-                        hooks_fn and hooks_fn(self.experiment, model, self.mode, *data, outputs)
-
-                        # Save checkpoints
-                        if self.mode == Mode.TRAIN and checkpoint_steps and (int_step % checkpoint_steps) == 0:
-                            save_path = manager.save()
-                            print("Saved checkpoint for step {}: {}".format(int_step, save_path))
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
@@ -669,4 +539,5 @@ def keras_weight_path(module, include_top, weights='imagenet'):
 
 def keras_weight_loader(module, model, include_top, weights='imagenet', by_name=False):
     model.load_weights(keras_weight_path(module, include_top, weights), by_name=by_name)
+
 
