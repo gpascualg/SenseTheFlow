@@ -84,8 +84,11 @@ class Experiment(object):
             Hookpoint.LOOP: []
         }
 
-    def add_hook(self, hookpoint, hook):
-        self.__hooks[hookpoint].append(hook)
+    def add_hook(self, hookpoint, hook, prepend=False):
+        if prepend:
+            self.__hooks[hookpoint].insert(0, hook)
+        else:
+            self.__hooks[hookpoint].append(hook)
 
     def get_hooks(self, hookpoint):
         return self.__hooks[hookpoint]
@@ -127,6 +130,13 @@ class Experiment(object):
         for mode in Mode:
             for context in self.__contexts[mode]:
                 context.wait()
+
+    def show_progress(self):
+        self.wait_ready()
+
+        for mode in Mode:
+            for context in self.__contexts[mode]:
+                context.reattach()
 
     def set_remote_execution(self):
         self.__is_remote_execution = True
@@ -258,6 +268,9 @@ class Experiment(object):
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
+    def _on_saved(self):
+        self.__is_using_initialized_model = True
+
 class ExperimentOutput(object):
     def __new__(cls, **kwargs):
         if sv.Version(tf.__version__).major == 1:
@@ -285,11 +298,20 @@ class ExperimentHook(object):
         self.__skip_after_error = False
 
     def ready(self, step):
-        return not self.__skip_after_error and (self.__now.is_set() or (step % self.__steps) == 0)
+        if self.__skip_after_error:
+            return False
+
+        if self.__now.is_set():
+            return True
+
+        if not self.__steps:
+            return False
+
+        return (step % self.__steps) == 0
 
     def _call_callback(self, experiment, step, *args):
         try:
-            return self.__callback(step, *args, *self.__args)
+            return self.__callback(experiment, step, *args, *self.__args)
         
         # We can't have exceptions interrumpting the whole process
         except Exception as e:
@@ -401,9 +423,10 @@ class ExperimentRun(object):
         if block:
             self.__checkpoint_hook.wait()
 
-    def __save(self, step, inputs, outputs, model, manager):
+    def __save(self, experiment, step, inputs, outputs, model, manager):
         save_path = manager.save()
         print("Saved checkpoint for step {}: {}".format(step, save_path))
+        experiment._on_saved()
 
     def stop(self):
         with self.__run_lock:
@@ -481,11 +504,12 @@ class ExperimentRun(object):
             else:
                 print("Initializing from scratch.")
 
-            # Create checkpoint hook if checkpoints enabled
+            # Create checkpoint hook if checkpoints enabled, and make sure it runs first
             self.__checkpoint_hook = ExperimentHook('checkpoint-iters', checkpoint_steps, self.__save, concurrent=False, args=(manager,))
-            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook)
+            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True)
 
             # Summaries and signal ready
+            first_iter = True
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
@@ -499,10 +523,12 @@ class ExperimentRun(object):
                         # Do the actual iter
                         outputs = step_fn(data, step)
                         step.assign_add(1)
-                        int_step = int(step)
+                        self.__step = int(step)
 
                         # If first step, check restoration and post_initialize hooks
-                        if int_step == 1:
+                        if first_iter:
+                            first_iter = False
+                            
                             # Make sure it is restored
                             if restore_information:
                                 restore_information[1]()
@@ -516,8 +542,12 @@ class ExperimentRun(object):
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
-                            if hook.ready(int_step):
-                                hook(self.experiment, int_step, data, outputs, model)
+                            if hook.ready(self.__step):
+                                hook(self.experiment, self.__step, data, outputs, model)
+
+                    # Epoch done, do we have a callback?
+                    if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                        model.on_epoch(step)
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
@@ -539,5 +569,4 @@ def keras_weight_path(module, include_top, weights='imagenet'):
 
 def keras_weight_loader(module, model, include_top, weights='imagenet', by_name=False):
     model.load_weights(keras_weight_path(module, include_top, weights), by_name=by_name)
-
 
