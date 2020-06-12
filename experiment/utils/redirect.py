@@ -200,12 +200,21 @@ _from_generator = tf.data.Dataset.from_generator
 
 @staticmethod
 def patched_from_generator(generator, output_types, output_shapes=None, args=None):
-    return _from_generator(
-        generator=lambda: forward(generator),
-        output_types=output_types,
-        output_shapes=output_shapes,
-        args=args
-    )
+    try:
+        return _from_generator(
+            generator=lambda: forward(generator),
+            output_types=output_types,
+            output_shapes=output_shapes,
+            args=args
+        )
+    except:
+        return _from_generator(
+            generator=generator,
+            output_types=output_types,
+            output_shapes=output_shapes,
+            args=args
+        )
+
 
 tf.data.Dataset.from_generator = patched_from_generator
 
