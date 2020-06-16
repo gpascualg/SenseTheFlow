@@ -216,5 +216,5 @@ def patched_from_generator(generator, output_types, output_shapes=None, args=Non
         )
 
 
-tf.data.Dataset.from_generator = patched_from_generator
+#tf.data.Dataset.from_generator = patched_from_generator
 
