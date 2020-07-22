@@ -569,6 +569,8 @@ def keras_weight_path(module, include_top, weights='imagenet'):
         
         return weights_path
 
+    raise NotImplementedError("Weights not supported")
+
 def keras_weight_loader(module, model, include_top, weights='imagenet', by_name=False):
     model.load_weights(keras_weight_path(module, include_top, weights), by_name=by_name)
 
