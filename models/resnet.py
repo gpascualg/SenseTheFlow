@@ -2,7 +2,7 @@ import tensorflow as tf
 import h5py
 
 from tensorflow.keras import layers
-from keras.engine import saving
+from tensorflow.python.keras.saving import hdf5_format
 
 
 class identity_block(tf.keras.Model):
@@ -205,8 +205,6 @@ class ResNet50(tf.keras.Model):
             layers = sum(layers, [])
 
             if by_name:
-                saving.load_weights_from_hdf5_group_by_name(
-                                f, layers, skip_mismatch=False,
-                                reshape=False)
+                hdf5_format.load_weights_from_hdf5_group_by_name(f, layers, skip_mismatch=False)
             else:
-                saving.load_weights_from_hdf5_group(f, layers, reshape=False)
+                hdf5_format.load_weights_from_hdf5_group(f, layers)
