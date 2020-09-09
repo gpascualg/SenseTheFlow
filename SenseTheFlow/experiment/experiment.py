@@ -349,9 +349,13 @@ class AsyncExecution(object):
     def __init__(self, experiment_run, *args, **kwargs):
         self.__experiment_run = experiment_run
         self.experiment = experiment_run.experiment
-        self.__thread = Thread(target=experiment_run._run, args=args, kwargs=kwargs)
+        self.__model = None
+        self.__thread = Thread(target=self._run, args=args, kwargs=kwargs)
         self.__thread.start()
 
+    def _run(self, *args, **kwargs):
+        self.__model = self.__experiment_run._run(*args, **kwargs)
+        
     def wait(self):
         try:
             self.__thread.join()
@@ -377,6 +381,11 @@ class AsyncExecution(object):
 
     def is_running(self):
         return self.__thread.is_alive()
+      
+    def model(self):
+        if self.__model is None:
+            raise NotImplementedError('Model is still running')
+        return self.__model
 
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
@@ -451,7 +460,7 @@ class ExperimentRun(object):
             if sv.Version(tf.__version__).major == 1:
                 raise NotImplementedError('Tensorflow 1.x support has been deprecated')
             else:
-                self._run_unsafe_2x(*args, **kwargs)
+                return self._run_unsafe_2x(*args, **kwargs)
         except:
             _, _, exc_traceback = sys.exc_info()
             self.__reason = tb.extract_tb(exc_traceback)
@@ -459,6 +468,8 @@ class ExperimentRun(object):
             # Ensure ready is set if something fails
             # Might be already set, it is not a problem
             self.__ready.set()
+            
+        return None
 
     @redirect.capture_output
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
@@ -478,6 +489,9 @@ class ExperimentRun(object):
         @tf.function
         def test_fn(data, step):
             return model(data, training=False, step=step)
+          
+        # Failsafe
+        model = None
 
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
@@ -559,6 +573,7 @@ class ExperimentRun(object):
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
+        return model
 
 def keras_weight_path(model_name, include_top=False):
     BASE_WEIGHTS_PATH = (
