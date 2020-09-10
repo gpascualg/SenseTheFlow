@@ -307,7 +307,7 @@ class ExperimentHook(object):
         if self.__skip_after_error:
             return False
 
-        if self.mode != Mode.ANY and self.mode != mode:
+        if self.__mode != Mode.ANY and self.__mode != mode:
             return False
 
         if not self.__steps:
