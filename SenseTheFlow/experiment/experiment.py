@@ -81,6 +81,7 @@ class Experiment(object):
         # Hooks
         self.__hooks = {
             Hookpoint.GRADIENT: [],
+            Hookpoint.POST_INITIALIZATION: [],
             Hookpoint.LOOP: []
         }
 
@@ -286,26 +287,34 @@ class ExperimentOutput(object):
         self.has_loss = loss is not None
 
 class ExperimentHook(object):
-    def __init__(self, name, steps, callback, concurrent=True, args=()):
+    def __init__(self, name, steps, callback, concurrent=True, args=(), mode=Mode.ANY):
         self.name = name
         self.__steps = steps
         self.__tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
         self.__args = args
+        self.__mode = mode
         self.__now = Event()
         self.__ready = Event()
         self.__skip_after_error = False
 
-    def ready(self, step):
+    @staticmethod
+    def always(name, callback, concurrent=True, args=(), mode=Mode.ANY):
+        return ExperimentHook(name, 1, callback, concurrent, args, mode)
+
+    def ready(self, step, mode):
         if self.__skip_after_error:
+            return False
+
+        if self.mode != Mode.ANY and self.mode != mode:
+            return False
+
+        if not self.__steps:
             return False
 
         if self.__now.is_set():
             return True
-
-        if not self.__steps:
-            return False
 
         return (step % self.__steps) == 0
 
@@ -529,6 +538,11 @@ class ExperimentRun(object):
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
+            # Execute hooks, if any
+            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                if hook.ready(self.__step, self.mode):
+                    hook(self.experiment, self.__step, data, outputs, model)
+
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
@@ -561,7 +575,7 @@ class ExperimentRun(object):
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
-                            if hook.ready(self.__step):
+                            if hook.ready(self.__step, self.mode):
                                 hook(self.experiment, self.__step, data, outputs, model)
 
                         if self.__stop:
