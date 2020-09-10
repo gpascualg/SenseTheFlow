@@ -538,11 +538,6 @@ class ExperimentRun(object):
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
 
-            # Execute hooks, if any
-            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, outputs, model)
-
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
@@ -568,6 +563,11 @@ class ExperimentRun(object):
 
                             # Post initialize hooks
                             post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+                            
+                            # Execute hooks, if any
+                            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                                if hook.ready(self.__step, self.mode):
+                                    hook(self.experiment, self.__step, None, None, model)
 
                         # Update tqdm
                         self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
