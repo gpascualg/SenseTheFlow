@@ -204,6 +204,8 @@ def discover(experiment, model_dir, model_name, prepend_timestamp, append_timest
     candidates = _get_candidate_models(model_dir, model_name)
     
     if not candidates:
+        print("No models found, creating new")
+
         model = _create_model(
             model_dir, 
             model_name, 
@@ -214,6 +216,7 @@ def discover(experiment, model_dir, model_name, prepend_timestamp, append_timest
         return output
 
     if force_last:
+        print("Forcing last model")
         output.on_value((candidates[0], True))
         return output
 
