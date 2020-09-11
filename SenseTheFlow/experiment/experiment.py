@@ -12,13 +12,25 @@ from concurrent.futures import ThreadPoolExecutor
 from ..config import bar
 from ..helper import DefaultNamespace, cmd_args
 from .data import DataType, FetchMethod, UriType
-from .utils import discover, redirect
+from .utils import discover
 from .mode import Mode, Hookpoint
 
                     
 def default_config():
-    gpu_options = tf.GPUOptions(allow_growth=True)
-    return tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
+    tf.config.set_soft_device_placement(True)
+
+    # Currently, memory growth needs to be the same across GPUs
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+
+            logical_gpus = tf.config.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Memory growth must be set before GPUs have been initialized
+            print(e)
 
 class Experiment(object):
     Instances = {}
@@ -210,7 +222,7 @@ class Experiment(object):
             
         return self.get_persistant_path()        
 
-    def run_local(self, callback, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
+    def run_local(self, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
         # Signal not ready
         self.__done_loading.clear()
         
@@ -220,18 +232,15 @@ class Experiment(object):
         model_dir = model_dir[:-len(model_name)]
 
         # Discover models
-        return discover.discover(self, model_dir, model_name, lambda *args: self._continue_loading(callback, *args), 
-                          prepend_timestamp, append_timestamp, delete_existing, force_ascii_discover, force_last)
+        return discover.discover(self, model_dir, model_name, prepend_timestamp, append_timestamp, 
+            delete_existing, force_ascii_discover, force_last)
 
     def run_remote(self, on_run):
         self.__on_run = on_run
 
-    def _continue_loading(self, callback, model, is_using_initialized_model):
-        # Save paths and call callback
-        self.__model_components = model
-        self.__is_using_initialized_model = is_using_initialized_model
-        callback(self)
-        
+    def on_discovered(self, output: discover.SelectionOutput):
+        self.__model_components, self.__is_using_initialized_model = output.get()
+
         # Singnal ready
         self.__done_loading.set()
 
@@ -243,6 +252,8 @@ class Experiment(object):
         return self.__model_cls(mode, self.params)
 
     def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=False):
+        assert self.__done_loading.is_set(), "Not loaded yet"
+
         run = ExperimentRun(self, Mode.TRAIN)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=checkpoint_steps, sync=sync)
@@ -250,6 +261,8 @@ class Experiment(object):
         return context_or_none
 
     def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
+        assert self.__done_loading.is_set(), "Not loaded yet"
+
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
@@ -260,6 +273,8 @@ class Experiment(object):
         return context_or_none
 
     def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
+        assert self.__done_loading.is_set(), "Not loaded yet"
+        
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
@@ -396,6 +411,24 @@ class AsyncExecution(object):
             raise NotImplementedError('Model is still running')
         return self.__model
 
+    def load_model_from_last_checkpoint(self):
+        model = self.experiment(Mode.TEST)
+        model_dir = self.experiment.get_model_directory()
+        ckpt = tf.train.Checkpoint(net=model)
+        manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
+
+        # Restore from checkpoint
+        if manager.latest_checkpoint:
+            restore_status = ckpt.restore(manager.latest_checkpoint)
+            if not restore_status:
+                raise NotImplementedError('There is no checkpoint yet')
+    
+            restore_status.assert_existing_objects_matched()
+        else:
+            raise NotImplementedError('There is no checkpoint yet')
+
+        return model
+
 class ExperimentRun(object):
     def __init__(self, experiment, mode):
         self.experiment = experiment
@@ -429,9 +462,6 @@ class ExperimentRun(object):
             # Create new bar
             self.__steps_bar = bar()
             self.__steps_bar.update(self.__step)
-            
-            # Recreate output capturing
-            redirect.GlobalOutput(self.experiment).create()
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
@@ -480,7 +510,6 @@ class ExperimentRun(object):
             
         return None
 
-    @redirect.capture_output
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
         @tf.function
         def train_fn(data, step):
@@ -546,6 +575,12 @@ class ExperimentRun(object):
                 for self.epoch in range(epochs):
                     if self.__stop:
                         break
+
+                    # Reset any metrics
+                    for attr, value in model.__dict__.items():
+                        attr = getattr(model, attr)
+                        if isinstance(attr, tf.keras.metrics.Metric):
+                            attr.reset_states()
 
                     for data in dataset:
                         # Do the actual iter

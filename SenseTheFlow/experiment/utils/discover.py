@@ -20,7 +20,7 @@ def _ask(message, valid):
         resp = resp if (resp in valid) else None
     return resp
 
-def _get_metadata( model_dir):
+def _get_metadata(model_dir):
         data = []
         try:
             with open(os.path.join(model_dir, '.sensetheflow')) as fp:
@@ -111,7 +111,32 @@ def _get_candidate_models(model_dir, model_name):
     except:
         return []
 
-def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing, candidates, on_discovered):
+
+class AlreadyHasValue(Exception):
+    pass
+
+class ValueNotSelected(Exception):
+    pass
+
+class SelectionOutput(object):
+    def __init__(self):
+        self.__has_output = False
+        self.__output = None
+    
+    def on_value(self, value):
+        if self.__has_output:
+            raise AlreadyHasValue()
+
+        self.__has_output = True
+        self.__output = value
+
+    def get(self):
+        if not self.__has_output:
+            raise ValueNotSelected()
+
+        return self.__output
+
+def _discover_jupyter(output: SelectionOutput, model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing, candidates):
     import ipywidgets as widgets
     from IPython.display import display
 
@@ -128,7 +153,6 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
         disabled=False
     )
 
-    @capture_output
     def on_change(change):
         if change['type'] == 'change' and change['name'] == 'value':
             idx = change['new']
@@ -166,8 +190,7 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
             else:
                 model = candidates[idx]
 
-            # get_ipython is no longer available due to being called from an "unsafe" environment
-            forward(on_discovered, model, initialized)
+            output.on_value((model, initialized))
 
     # Display widgets
     display(select)
@@ -176,13 +199,10 @@ def _discover_jupyter(model_dir, model_name, prepend_timestamp, append_timestamp
     select.index = None
     select.observe(on_change)
 
-def discover(experiment, model_dir, model_name, on_discovered, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
+def discover(experiment, model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
+    output = SelectionOutput()
     candidates = _get_candidate_models(model_dir, model_name)
     
-    # Create a new widget in jupyter mode
-    if is_jupyter():
-        GlobalOutput(experiment).create()
-
     if not candidates:
         model = _create_model(
             model_dir, 
@@ -190,21 +210,24 @@ def discover(experiment, model_dir, model_name, on_discovered, prepend_timestamp
             prepend_timestamp,
             append_timestamp
         )
-        return forward(on_discovered, model, False)
+        output.on_value((model, False))
+        return output
 
     if force_last:
-        return forward(on_discovered, candidates[0], True)
+        output.on_value((candidates[0], True))
+        return output
 
     if is_jupyter() and not force_ascii:
-        return _discover_jupyter(
+        _discover_jupyter(
+            output,
             model_dir,
             model_name,
             prepend_timestamp,
             append_timestamp,
             delete_existing,
-            candidates,
-            on_discovered
+            candidates
         )
+        return output
 
     num_candidates = len(candidates)
     is_using_initialized_model = False
@@ -253,4 +276,5 @@ def discover(experiment, model_dir, model_name, on_discovered, prepend_timestamp
             append_timestamp
         )
     
-    return on_discovered(model, is_using_initialized_model)
+    output.on_value((model, is_using_initialized_model))
+    return output

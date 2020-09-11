@@ -11,4 +11,13 @@ def is_jupyter():
         return False
 
 
-bar = tqdm.tqdm_notebook if is_jupyter() else tqdm.tqdm
+def get_bar():
+    if is_jupyter():
+        try:
+            return tqdm.notebook.tqdm
+        except:
+            return tqdm.tqdm_notebook
+
+    return tqdm.tqdm
+
+bar = get_bar()
