@@ -450,9 +450,6 @@ class ExperimentRun(object):
         self.__ready = Event()
         self.__run_lock = Lock()
 
-        # Exit code
-        self.__reason = None
-
     def reattach(self):
         with self.__run_lock:
             # Close current bar, if any
@@ -480,9 +477,6 @@ class ExperimentRun(object):
         with self.__run_lock:
             self.__stop = True
 
-    def exit_reason(self):
-        return self.__reason
-
     # The user won't see this at all
     def run(self, *args, **kwargs):
         if kwargs['sync']:
@@ -500,9 +494,6 @@ class ExperimentRun(object):
                 raise NotImplementedError('Tensorflow 1.x support has been deprecated')
             else:
                 return self._run_unsafe_2x(*args, **kwargs)
-        except:
-            _, _, exc_traceback = sys.exc_info()
-            self.__reason = tb.extract_tb(exc_traceback)
         finally:
             # Ensure ready is set if something fails
             # Might be already set, it is not a problem
