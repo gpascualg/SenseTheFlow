@@ -520,6 +520,10 @@ class ExperimentRun(object):
             gradients = tape.gradient(loss, model.trainable_variables)
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
             model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            
+            # Increment step now
+            step.assign_add(1)
+            
             return outputs
 
         @tf.function
@@ -583,7 +587,6 @@ class ExperimentRun(object):
                     for data in dataset:
                         # Do the actual iter
                         outputs = step_fn(data, step)
-                        step.assign_add(1)
                         self.__step = int(step)
 
                         # If first step, check restoration and post_initialize hooks
