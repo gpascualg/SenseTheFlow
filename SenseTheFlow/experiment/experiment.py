@@ -97,7 +97,14 @@ class Experiment(object):
             Hookpoint.LOOP: []
         }
 
-    def add_hook(self, hookpoint, hook, prepend=False):
+    def add_hook(self, hookpoint, hook, prepend=False, silent=False):
+        # Check if it already exists
+        for hk in self.__hooks[hookpoint]:
+            if hk.name == hook.name and hk.mode == hook.mode:
+                if not silent:
+                    print(f'A hook with the name \'{hk.name}\' and mode \'{hk.mode}\' already exists in \'{hookpoint}\'')
+                return
+        
         if prepend:
             self.__hooks[hookpoint].insert(0, hook)
         else:
@@ -304,12 +311,12 @@ class ExperimentOutput(object):
 class ExperimentHook(object):
     def __init__(self, name, steps, callback, concurrent=True, args=(), mode=Mode.ANY):
         self.name = name
+        self.mode = mode
         self.__steps = steps
         self.__tensors = []
         self.__callback = callback
         self.__concurrent = concurrent
         self.__args = args
-        self.__mode = mode
         self.__now = Event()
         self.__ready = Event()
         self.__skip_after_error = False
@@ -322,7 +329,7 @@ class ExperimentHook(object):
         if self.__skip_after_error:
             return False
 
-        if self.__mode != Mode.ANY and self.__mode != mode:
+        if self.mode != Mode.ANY and self.mode != mode:
             return False
 
         if not self.__steps:
@@ -340,7 +347,7 @@ class ExperimentHook(object):
         # We can't have exceptions interrumpting the whole process
         except Exception as e:
             self.__skip_after_error = True
-            print('Error on hook {} -> Disabling hook'.format(self.name), file=sys.stderr)
+            print('Error on hook {}/{} -> Disabling hook'.format(self.name, self.mode), file=sys.stderr)
             tb.print_exc()
         finally:
             self.__ready.set()
@@ -550,8 +557,8 @@ class ExperimentRun(object):
                 print("Initializing from scratch.")
 
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
-            self.__checkpoint_hook = ExperimentHook('checkpoint-iters', checkpoint_steps, self.__save, concurrent=False, args=(manager,))
-            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True)
+            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
+            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             # Summaries and signal ready
             first_iter = True
