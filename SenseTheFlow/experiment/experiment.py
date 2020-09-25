@@ -581,8 +581,14 @@ class ExperimentRun(object):
                     # Reset any metrics
                     for attr, value in model.__dict__.items():
                         attr = getattr(model, attr)
-                        if isinstance(attr, tf.keras.metrics.Metric):
-                            attr.reset_states()
+                        if isinstance(attr, dict):
+                            attr = attr.values()
+                        elif not isinstance(attr, (list, tuple)):
+                            attr = [attr]
+                        
+                        for maybe_metric in attr:
+                            if isinstance(maybe_metric, tf.keras.metrics.Metric):
+                                maybe_metric.reset_states()
 
                     for data in dataset:
                         # Do the actual iter
