@@ -229,6 +229,24 @@ class Experiment(object):
             
         return self.get_persistant_path()        
 
+    def load_model_from_last_checkpoint(self, mode):
+        model = self(mode)
+        model_dir = self.get_model_directory()
+        ckpt = tf.train.Checkpoint(net=model)
+        manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
+
+        # Restore from checkpoint
+        if manager.latest_checkpoint:
+            restore_status = ckpt.restore(manager.latest_checkpoint)
+            if not restore_status:
+                raise NotImplementedError('There is no checkpoint yet')
+    
+            restore_status.assert_existing_objects_matched()
+        else:
+            raise NotImplementedError('There is no checkpoint yet')
+
+        return model
+      
     def run_local(self, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
         # Signal not ready
         self.__done_loading.clear()
@@ -418,8 +436,8 @@ class AsyncExecution(object):
             raise NotImplementedError('Model is still running')
         return self.__model
 
-    def load_model_from_last_checkpoint(self):
-        model = self.experiment(Mode.TEST)
+    def load_model_from_last_checkpoint(self, mode):
+        model = self.experiment(mode)
         model_dir = self.experiment.get_model_directory()
         ckpt = tf.train.Checkpoint(net=model)
         manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
