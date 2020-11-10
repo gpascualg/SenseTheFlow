@@ -583,7 +583,7 @@ class ExperimentRun(object):
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
             model_dir = self.experiment.get_model_directory()
-            ckpt = tf.train.Checkpoint(step=step, optimizer=model.optimizer, net=model)
+            ckpt = tf.train.Checkpoint(step=step, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
