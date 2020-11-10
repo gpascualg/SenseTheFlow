@@ -705,7 +705,7 @@ class ExperimentRun(object):
             # Execute hooks, if any
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model, manager)
+                    hook(self.experiment, self.__step, None, None, model)
             
             #self.__save(self.experiment, self.__step, None, None, model, manager)
 
