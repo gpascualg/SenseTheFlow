@@ -16,8 +16,8 @@ from .utils import discover
 from .mode import Mode, Hookpoint
 
                     
-def default_config():
-    tf.config.set_soft_device_placement(True)
+def default_config(soft_device_placement=True):
+    tf.config.set_soft_device_placement(soft_device_placement)
 
     # Currently, memory growth needs to be the same across GPUs
     gpus = tf.config.list_physical_devices('GPU')
@@ -546,12 +546,11 @@ class ExperimentRun(object):
         with tf.device('/gpu:{}'.format(gpu)):
             @tf.function
             def train_fn(data, step):
-                with tf.device('/gpu:{}'.format(gpu)):
-                        with tf.GradientTape() as tape:
-                            outputs = model(data, training=True, step=step)
-                            loss = outputs['loss']
-                            if model.losses:
-                                loss = loss + tf.add_n(model.losses)
+                with tf.GradientTape() as tape:
+                    outputs = model(data, training=True, step=step)
+                    loss = outputs['loss']
+                    if model.losses:
+                        loss = loss + tf.add_n(model.losses)
                 
                 gradients = tape.gradient(loss, model.trainable_variables)
                 # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
@@ -564,8 +563,7 @@ class ExperimentRun(object):
 
             @tf.function
             def test_fn(data, step):
-                with tf.device('/gpu:{}'.format(gpu)):
-                        return model(data, training=False, step=step)
+                return model(data, training=False, step=step)
                 
             step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
