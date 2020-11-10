@@ -576,14 +576,13 @@ class ExperimentRun(object):
         # Get a GPU for execution
         device = self.experiment.get_device()
         with tf.device(device):
-            step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
 
             assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
 
             model_dir = self.experiment.get_model_directory()
-            ckpt = tf.train.Checkpoint(step=step, net=model)
+            ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
@@ -598,8 +597,9 @@ class ExperimentRun(object):
             if manager.latest_checkpoint:
                 restore_status = ckpt.restore(manager.latest_checkpoint)
                 restore_status.assert_existing_objects_matched()
-                print("Restored iter {} from {}".format(int(step), manager.latest_checkpoint))
-                self.__update_steps_bar("Restored iter {} from {}".format(int(step), manager.latest_checkpoint), int(step))
+                self.__step = int(ckpt.step)
+                print("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint))
+                self.__update_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
             else:
                 print("Initializing from scratch.")
 
@@ -639,8 +639,8 @@ class ExperimentRun(object):
 
                     for data in dataset:
                         # Do the actual iter
-                        outputs = step_fn(data, step)
-                        self.__step = int(step)
+                        outputs = step_fn(data, ckpt.step)
+                        self.__step = int(ckpt.step)
 
                         # If first step, check restoration and post_initialize hooks
                         if first_iter:
@@ -667,7 +667,7 @@ class ExperimentRun(object):
 
                     # Epoch done, do we have a callback?
                     if hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                        model.on_epoch(step)
+                        model.on_epoch(ckpt.step)
 
                     # Update tqdm
                     self.__update_epochs_bar()
