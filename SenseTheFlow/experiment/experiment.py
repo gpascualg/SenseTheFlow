@@ -573,12 +573,10 @@ class ExperimentRun(object):
         def test_fn(data, step):
             return model(data, training=False, step=step)
 
-        with tf.device('/cpu:0'):
-            step = tf.Variable(0, dtype=tf.int64)
-
         # Get a GPU for execution
         device = self.experiment.get_device()
         with tf.device(device):
+            step = tf.Variable(0, dtype=tf.int32)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
 
