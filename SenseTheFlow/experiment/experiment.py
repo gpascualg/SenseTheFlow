@@ -576,12 +576,14 @@ class ExperimentRun(object):
             model = self.experiment(self.mode)
             dataset = dataset_fn(self.mode, self.experiment.params)
             iterator = iter(dataset)
-            step = tf.Variable(0, dtype=tf.int64, trainable=False)
+
+            stf = tf.Module()
+            stf.step = tf.Variable(0, dtype=tf.int64, trainable=False)
 
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
             model_dir = self.experiment.get_model_directory()
-            ckpt = tf.train.Checkpoint(step=step, optimizer=optimizer, net=model)
+            ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
@@ -601,7 +603,7 @@ class ExperimentRun(object):
                 else:
                     postponed_assert = restore_information.assert_existing_objects_matched
 
-                self.__step = int(step)
+                self.__step = int(stf.step)
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
                 print(message)
@@ -646,11 +648,11 @@ class ExperimentRun(object):
 
                     for data in iterator:
                         # Do the actual iter
-                        outputs = step_fn(data, step)
+                        outputs = step_fn(data, stf.step)
             
                         # Increment step now
-                        step.assign_add(increment_amount)
-                        self.__step = int(step)
+                        stf.step.assign_add(increment_amount)
+                        self.__step = int(stf.step)
 
                         # If first step, check restoration and post_initialize hooks
                         if first_iter:
@@ -681,7 +683,7 @@ class ExperimentRun(object):
 
                     # Epoch done, do we have a callback?
                     if hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                        model.on_epoch(step)
+                        model.on_epoch(stf.step)
 
                     # Update tqdm
                     self.__update_epochs_bar()
@@ -695,8 +697,6 @@ class ExperimentRun(object):
                 if hook.ready(self.__step, self.mode):
                     hook(self.experiment, self.__step, None, None, model)
 
-        print(step)
-        print(int(step)) 
         return model
 
 def keras_weight_path(model_name, include_top=False):
