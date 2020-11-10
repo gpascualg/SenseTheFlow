@@ -695,10 +695,12 @@ class ExperimentRun(object):
             self.experiment.free_device(device)
 
             # Execute hooks, if any
-            # for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
-            #     if hook.ready(self.__step, self.mode):
-            #         hook(self.experiment, self.__step, None, None, model)
-            self.__save(self.experiment, self.__step, None, None, model, manager)
+            for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
+                if hook.ready(self.__step, self.mode):
+                    hook(self.experiment, self.__step, None, None, model)
+            
+            #self.__save(self.experiment, self.__step, None, None, model, manager)
+            print(manager.latest_checkpoint)
 
         return model
 
