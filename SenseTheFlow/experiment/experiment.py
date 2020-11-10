@@ -515,9 +515,9 @@ class ExperimentRun(object):
             self.__steps_bar.set_description(description)
             self.__steps_bar.update(amount)
 
-    def __update_epochs_bar(self):
+    def __update_epochs_bar(self, amount=1):
         if self.use_bars:
-            self.__epochs_bar.update(1)
+            self.__epochs_bar.update(amount)
 
     def __close_bars(self):
         if self.use_bars:
@@ -579,6 +579,7 @@ class ExperimentRun(object):
 
             stf = tf.Module()
             stf.step = tf.Variable(0, dtype=tf.int64, trainable=False)
+            stf.epoch = tf.Variable(0, dtype=tf.int64, trainable=False)
 
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
@@ -608,6 +609,7 @@ class ExperimentRun(object):
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
                 print(message)
                 self.__update_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
+                self.__update_epochs_bar(int(stf.epoch))
             else:
                 print("Initializing from scratch.")
 
@@ -687,6 +689,7 @@ class ExperimentRun(object):
 
                     # Update tqdm
                     self.__update_epochs_bar()
+                    stf.epoch.assign_add(1)
 
             # Free current GPU
             self.__close_bars()
