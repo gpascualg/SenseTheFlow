@@ -653,8 +653,7 @@ class ExperimentRun(object):
                         outputs = step_fn(data, stf.step)
             
                         # Increment step now
-                        stf.step.assign_add(increment_amount, use_locking=True)
-                        self.__step = int(stf.step)
+                        self.__step = int(stf.step.assign_add(increment_amount))
 
                         # If first step, check restoration and post_initialize hooks
                         if first_iter:
@@ -696,9 +695,10 @@ class ExperimentRun(object):
             self.experiment.free_device(device)
 
             # Execute hooks, if any
-            for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
-                if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model)
+            # for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
+            #     if hook.ready(self.__step, self.mode):
+            #         hook(self.experiment, self.__step, None, None, model)
+            self.__save(self.experiment, self.__step, None, None, model, manager)
 
         return model
 
