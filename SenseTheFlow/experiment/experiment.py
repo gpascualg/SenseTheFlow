@@ -165,7 +165,13 @@ class Experiment(object):
         if not isinstance(gpu, (list, tuple)):
             gpu = (gpu,)
 
-        self.__gpu = {g: 0 for g in gpu}
+        self.__gpu = {'/gpu:{}'.format(g): 0 for g in gpu}
+        
+    def assign_device(self, device):
+        if not isinstance(device, (list, tuple)):
+            device = (device,)
+
+        self.__gpu = {d: 0 for d in device}
 
     def add_data(self, method, uri_type, uri):
         if uri_type == UriType.PERSISTENT:
@@ -200,7 +206,7 @@ class Experiment(object):
         if self.__on_stop:
             self.__on_stop(self)
 
-    def get_gpu(self):
+    def get_device(self):
         assert self.__gpu is not None, "Got an invalid GPU"
 
         with self.__gpu_lock:
@@ -208,7 +214,7 @@ class Experiment(object):
             self.__gpu[gpu] += 1
             return gpu
 
-    def free_gpu(self, gpu):
+    def free_device(self, gpu):
         assert self.__gpu is not None, "Got an invalid GPU"
 
         with self.__gpu_lock:
@@ -542,8 +548,8 @@ class ExperimentRun(object):
         model = None
 
         # Get a GPU for execution
-        gpu = self.experiment.get_gpu()
-        with tf.device('/gpu:{}'.format(gpu)):
+        device = self.experiment.get_device()
+        with tf.device(device):
             @tf.function
             def train_fn(data, step):
                 with tf.GradientTape() as tape:
@@ -659,7 +665,7 @@ class ExperimentRun(object):
                     self.__update_epochs_bar()
 
         # Free current GPU
-        self.experiment.free_gpu(gpu)
+        self.experiment.free_device(device)
         return model
 
 def keras_weight_path(model_name, include_top=False):
