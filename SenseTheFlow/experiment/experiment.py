@@ -283,12 +283,12 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=checkpoint_steps, sync=sync)
+            checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
@@ -300,7 +300,7 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=None, sync=sync)
+            checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
@@ -312,7 +312,7 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=None, sync=sync)
+            checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -548,7 +548,7 @@ class ExperimentRun(object):
             
         return None
 
-    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=None):
         # Failsafe
         model = None
         
@@ -606,6 +606,10 @@ class ExperimentRun(object):
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
             self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
+
+            if checkpoint_on_epoch:
+                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(manager,), mode=self.mode)
+                self.experiment.add_hook(Hookpoint.END, checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
             first_iter = True
