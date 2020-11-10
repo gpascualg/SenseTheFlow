@@ -564,9 +564,6 @@ class ExperimentRun(object):
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
             optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             
-            # Increment step now
-            step.assign_add(1)
-            
             return outputs
 
         @tf.function
@@ -628,7 +625,7 @@ class ExperimentRun(object):
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
-                bar_amount = 1 if self.mode == Mode.TRAIN else 0
+                increment_amount = 1 if self.mode == Mode.TRAIN else 0
 
                 # Run it all
                 for self.epoch in range(epochs):
@@ -650,6 +647,9 @@ class ExperimentRun(object):
                     for data in iterator:
                         # Do the actual iter
                         outputs = step_fn(data, step)
+            
+                        # Increment step now
+                        step.assign_add(increment_amount)
                         self.__step = int(step)
 
                         # If first step, check restoration and post_initialize hooks
@@ -669,7 +669,7 @@ class ExperimentRun(object):
                                     hook(self.experiment, self.__step, None, None, model)
 
                         # Update tqdm
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), bar_amount)
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
