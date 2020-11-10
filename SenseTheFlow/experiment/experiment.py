@@ -653,7 +653,7 @@ class ExperimentRun(object):
                         outputs = step_fn(data, stf.step)
             
                         # Increment step now
-                        stf.step.assign_add(increment_amount)
+                        stf.step.assign_add(increment_amount, use_locking=True)
                         self.__step = int(stf.step)
 
                         # If first step, check restoration and post_initialize hooks
