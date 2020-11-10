@@ -95,7 +95,7 @@ class Experiment(object):
             Hookpoint.GRADIENT: [],
             Hookpoint.POST_INITIALIZATION: [],
             Hookpoint.LOOP: [],
-            Hookpoint.END: []
+            Hookpoint.EPOCH: []
         }
 
     def add_hook(self, hookpoint, hook, prepend=False, silent=False):
@@ -576,9 +576,10 @@ class ExperimentRun(object):
         # Get a GPU for execution
         device = self.experiment.get_device()
         with tf.device(device):
-            step = tf.Variable(0, dtype=tf.int32)
-            dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
+            dataset = dataset_fn(self.mode, self.experiment.params)
+            iterator = iter(dataset)
+            step = tf.Variable(0, dtype=tf.int64, trainable=False)
 
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
@@ -617,7 +618,7 @@ class ExperimentRun(object):
 
             if checkpoint_on_epoch:
                 checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(manager,), mode=self.mode)
-                self.experiment.add_hook(Hookpoint.END, checkpoint_epoch_hook, silent=True)
+                self.experiment.add_hook(Hookpoint.EPOCH, checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
             first_iter = True
@@ -646,7 +647,7 @@ class ExperimentRun(object):
                             if isinstance(maybe_metric, tf.keras.metrics.Metric):
                                 maybe_metric.reset_states()
 
-                    for data in dataset:
+                    for data in iterator:
                         # Do the actual iter
                         outputs = step_fn(data, step)
                         self.__step = int(step)
@@ -685,15 +686,12 @@ class ExperimentRun(object):
                     # Update tqdm
                     self.__update_epochs_bar()
 
-                    if self.__stop:
-                        break
-
             # Free current GPU
             self.__close_bars()
             self.experiment.free_device(device)
 
             # Execute hooks, if any
-            for hook in self.experiment.get_hooks(Hookpoint.END):
+            for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
                     hook(self.experiment, self.__step, None, None, model)
             

@@ -11,4 +11,4 @@ class Hookpoint(Enum):
     GRADIENT = 0
     POST_INITIALIZATION = 1
     LOOP = 2
-    END = 3
+    EPOCH = 3
