@@ -501,7 +501,7 @@ class ExperimentRun(object):
         if block:
             self.__checkpoint_hook.wait()
 
-    def __save(self, experiment, step, inputs, outputs, model, manager, ckpt):
+    def __save(self, experiment, step, inputs, outputs, model, manager):
         save_path = manager.save()
         print("Saved checkpoint for step {}: {}".format(step, save_path))
         experiment._on_saved()
@@ -614,11 +614,11 @@ class ExperimentRun(object):
                 print("Initializing from scratch.")
 
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
-            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager, ckpt), mode=self.mode)
+            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             if checkpoint_on_epoch:
-                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(manager, ckpt), mode=self.mode)
+                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, mode=self.mode)
                 self.experiment.add_hook(Hookpoint.EPOCH, checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
@@ -697,7 +697,7 @@ class ExperimentRun(object):
             # Execute hooks, if any
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model)
+                    hook(self.experiment, self.__step, None, None, model, manager)
             
             #self.__save(self.experiment, self.__step, None, None, model, manager)
 
