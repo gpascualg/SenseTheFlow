@@ -510,10 +510,10 @@ class ExperimentRun(object):
         with self.__run_lock:
             self.__stop = True
 
-    def __update_steps_bar(self, description):
+    def __update_steps_bar(self, description, amount=1):
         if self.use_bars:
             self.__steps_bar.set_description(description)
-            self.__steps_bar.update(1)
+            self.__steps_bar.update(amount)
 
     def __update_epochs_bar(self):
         if self.use_bars:
@@ -551,31 +551,31 @@ class ExperimentRun(object):
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
         # Failsafe
         model = None
+        
+        @tf.function
+        def train_fn(data, step):
+            with tf.GradientTape() as tape:
+                outputs = model(data, training=True, step=step)
+                loss = outputs['loss']
+                if model.losses:
+                    loss = loss + tf.add_n(model.losses)
+            
+            gradients = tape.gradient(loss, model.trainable_variables)
+            # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
+            model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            
+            # Increment step now
+            step.assign_add(1)
+            
+            return outputs
+
+        @tf.function
+        def test_fn(data, step):
+            return model(data, training=False, step=step)
 
         # Get a GPU for execution
         device = self.experiment.get_device()
         with tf.device(device):
-            @tf.function
-            def train_fn(data, step):
-                with tf.GradientTape() as tape:
-                    outputs = model(data, training=True, step=step)
-                    loss = outputs['loss']
-                    if model.losses:
-                        loss = loss + tf.add_n(model.losses)
-                
-                gradients = tape.gradient(loss, model.trainable_variables)
-                # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-                model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-                
-                # Increment step now
-                step.assign_add(1)
-                
-                return outputs
-
-            @tf.function
-            def test_fn(data, step):
-                return model(data, training=False, step=step)
-                
             step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
@@ -599,9 +599,10 @@ class ExperimentRun(object):
                 restore_status = ckpt.restore(manager.latest_checkpoint)
                 restore_status.assert_existing_objects_matched()
                 print("Restored iter {} from {}".format(int(step), manager.latest_checkpoint))
+                self.__update_steps_bar("Restored iter {} from {}".format(int(step), manager.latest_checkpoint), int(step))
             else:
                 print("Initializing from scratch.")
-            
+
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
             self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
@@ -666,6 +667,9 @@ class ExperimentRun(object):
 
                     # Update tqdm
                     self.__update_epochs_bar()
+
+                    if self.__stop:
+                        break
 
             # Free current GPU
             self.__close_bars()
