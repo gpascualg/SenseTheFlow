@@ -276,34 +276,34 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=False):
+    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
-        run = ExperimentRun(self, Mode.TRAIN)
+        run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=checkpoint_steps, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
+    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
-        run = ExperimentRun(self, Mode.EVAL)
+        run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=None, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False):
+    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
-        run = ExperimentRun(self, Mode.TEST)
+        run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=None, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
@@ -455,13 +455,15 @@ class AsyncExecution(object):
         return model
 
 class ExperimentRun(object):
-    def __init__(self, experiment, mode):
+    def __init__(self, experiment, mode, use_bars, leave_bars):
         self.experiment = experiment
         self.mode = mode
 
         # Create bars now, won't work properly later
-        self.__epochs_bar = bar()
-        self.__steps_bar = bar()
+        self.use_bars = use_bars
+        if self.use_bars:
+            self.__epochs_bar = bar(leave=leave_bars)
+            self.__steps_bar = bar(leave=leave_bars)
         
         # To allow execution re-attaching
         self.__step = -1
@@ -502,6 +504,15 @@ class ExperimentRun(object):
         with self.__run_lock:
             self.__stop = True
 
+    def __update_steps_bar(self, description):
+        if self.use_bars:
+            self.__steps_bar.set_description(description)
+            self.__steps_bar.update(1)
+
+    def __update_epochs_bar(self):
+        if self.use_bars:
+            self.__epochs_bar.update(1)
+
     # The user won't see this at all
     def run(self, *args, **kwargs):
         if kwargs['sync']:
@@ -527,33 +538,33 @@ class ExperimentRun(object):
         return None
 
     def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, sync=None):
-        @tf.function
-        def train_fn(data, step):
-            with tf.GradientTape() as tape:
-                outputs = model(data, training=True, step=step)
-                loss = outputs['loss']
-                if model.losses:
-                    loss = loss + tf.add_n(model.losses)
-            
-            gradients = tape.gradient(loss, model.trainable_variables)
-            # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-            model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-            
-            # Increment step now
-            step.assign_add(1)
-            
-            return outputs
-
-        @tf.function
-        def test_fn(data, step):
-            return model(data, training=False, step=step)
-          
         # Failsafe
         model = None
 
         # Get a GPU for execution
         gpu = self.experiment.get_gpu()
         with tf.device('/gpu:{}'.format(gpu)):
+            @tf.function
+            def train_fn(data, step):
+                with tf.GradientTape() as tape:
+                    outputs = model(data, training=True, step=step)
+                    loss = outputs['loss']
+                    if model.losses:
+                        loss = loss + tf.add_n(model.losses)
+                
+                gradients = tape.gradient(loss, model.trainable_variables)
+                # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
+                model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                
+                # Increment step now
+                step.assign_add(1)
+                
+                return outputs
+
+            @tf.function
+            def test_fn(data, step):
+                return model(data, training=False, step=step)
+                
             step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
@@ -630,8 +641,7 @@ class ExperimentRun(object):
                                     hook(self.experiment, self.__step, None, None, model)
 
                         # Update tqdm
-                        self.__steps_bar.set_description('Loss: {:.2f}'.format(float(outputs['loss'])))
-                        self.__steps_bar.update(1)
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])))
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
@@ -644,6 +654,9 @@ class ExperimentRun(object):
                     # Epoch done, do we have a callback?
                     if hasattr(model, 'on_epoch') and callable(model.on_epoch):
                         model.on_epoch(step)
+
+                    # Update tqdm
+                    self.__update_epochs_bar()
 
         # Free current GPU
         self.experiment.free_gpu(gpu)
