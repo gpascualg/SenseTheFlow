@@ -388,6 +388,9 @@ class ExperimentHook(object):
         else:
             self._call_callback(experiment, step, *args)
 
+    def set_args(self, *args):
+        self.__args = args
+
     def tensors(self):
         return self.__tensors
 
@@ -478,6 +481,7 @@ class ExperimentRun(object):
 
         # Trigger hook right now
         self.__checkpoint_hook = None
+        self.__checkpoint_epoch_hook = None
         self.__summaries_hook = None
 
         # Avoid weird issues with hook signaling
@@ -618,8 +622,8 @@ class ExperimentRun(object):
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             if checkpoint_on_epoch:
-                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, mode=self.mode)
-                self.experiment.add_hook(Hookpoint.EPOCH, checkpoint_epoch_hook, silent=True)
+                self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, mode=self.mode)
+                self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
             first_iter = True
@@ -662,6 +666,10 @@ class ExperimentRun(object):
                             # Assert
                             if postponed_assert is not None:
                                 postponed_assert()
+
+                            # Modify hooks preset arguments
+                            self.__checkpoint_hook.set_args(manager)
+                            self.__checkpoint_epoch_hook.set_args(manager)
 
                             # Post initialize hooks
                             post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
