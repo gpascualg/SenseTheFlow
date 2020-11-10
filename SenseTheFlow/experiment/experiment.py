@@ -597,7 +597,12 @@ class ExperimentRun(object):
 
             # Restore from checkpoint
             if manager.latest_checkpoint:
-                postponed_assert = ckpt.restore(manager.latest_checkpoint).assert_consumed
+                restore_information = ckpt.restore(manager.latest_checkpoint)
+                if self.mode == Mode.TRAIN:
+                    postponed_assert = restore_information.assert_consumed
+                else:
+                    postponed_assert = restore_information.assert_existing_objects_matched
+
                 self.__step = int(step)
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
