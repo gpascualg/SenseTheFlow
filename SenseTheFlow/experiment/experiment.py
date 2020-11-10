@@ -573,10 +573,12 @@ class ExperimentRun(object):
         def test_fn(data, step):
             return model(data, training=False, step=step)
 
+        with tf.device('/cpu:0'):
+            step = tf.Variable(0, dtype=tf.int64)
+
         # Get a GPU for execution
         device = self.experiment.get_device()
         with tf.device(device):
-            step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
 
@@ -627,7 +629,8 @@ class ExperimentRun(object):
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
-            
+                bar_amount = 1 if self.mode == Mode.TRAIN else 0
+
                 # Run it all
                 for self.epoch in range(epochs):
                     if self.__stop:
@@ -667,7 +670,7 @@ class ExperimentRun(object):
                                     hook(self.experiment, self.__step, None, None, model)
 
                         # Update tqdm
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])))
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), bar_amount)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
