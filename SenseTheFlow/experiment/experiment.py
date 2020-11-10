@@ -94,7 +94,8 @@ class Experiment(object):
         self.__hooks = {
             Hookpoint.GRADIENT: [],
             Hookpoint.POST_INITIALIZATION: [],
-            Hookpoint.LOOP: []
+            Hookpoint.LOOP: [],
+            Hookpoint.END: []
         }
 
     def add_hook(self, hookpoint, hook, prepend=False, silent=False):
@@ -485,9 +486,8 @@ class ExperimentRun(object):
 
     def reattach(self):
         with self.__run_lock:
-            # Close current bar, if any
-            if self.__steps_bar is not None:
-                self.__steps_bar.close()
+            # Close current bar
+            self.__steps_bar.close()
         
             # Create new bar
             self.__steps_bar = bar()
@@ -518,6 +518,11 @@ class ExperimentRun(object):
     def __update_epochs_bar(self):
         if self.use_bars:
             self.__epochs_bar.update(1)
+
+    def __close_bars(self):
+        if self.use_bars:
+            self.__steps_bar.close()
+            self.__epochs_bar.close()
 
     # The user won't see this at all
     def run(self, *args, **kwargs):
@@ -594,6 +599,10 @@ class ExperimentRun(object):
                 print(restore_status)
             else:
                 print("Initializing from scratch.")
+                            
+            # Make sure it is restored
+            if restore_information:
+                restore_information[1]()
 
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
             self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
@@ -633,10 +642,6 @@ class ExperimentRun(object):
                         # If first step, check restoration and post_initialize hooks
                         if first_iter:
                             first_iter = False
-                            
-                            # Make sure it is restored
-                            if restore_information:
-                                restore_information[1]()
 
                             # Post initialize hooks
                             post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
@@ -664,8 +669,15 @@ class ExperimentRun(object):
                     # Update tqdm
                     self.__update_epochs_bar()
 
-        # Free current GPU
-        self.experiment.free_device(device)
+            # Free current GPU
+            self.__close_bars()
+            self.experiment.free_device(device)
+
+            # Execute hooks, if any
+            for hook in self.experiment.get_hooks(Hookpoint.END):
+                if hook.ready(self.__step, self.mode):
+                    hook(self.experiment, self.__step, None, None, model)
+            
         return model
 
 def keras_weight_path(model_name, include_top=False):
