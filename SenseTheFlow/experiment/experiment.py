@@ -675,17 +675,13 @@ class ExperimentRun(object):
                                 if hook.ready(self.__step, self.mode):
                                     hook(self.experiment, self.__step, None, None, model)
 
-                            # Modify hooks preset arguments
-                            self.__checkpoint_hook.set_args(manager)
-                            self.__checkpoint_epoch_hook.set_args(manager)
-
                         # Update tqdm
                         self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
                             if hook.ready(self.__step, self.mode):
-                                hook(self.experiment, self.__step, data, outputs, model)
+                                hook(self.experiment, self.__step, data, outputs, model, manager)
 
                         if self.__stop:
                             break
@@ -705,9 +701,7 @@ class ExperimentRun(object):
             # Execute hooks, if any
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model)
-            
-            #self.__save(self.experiment, self.__step, None, None, model, manager)
+                    hook(self.experiment, self.__step, None, None, model, manager)
 
         return model
 
