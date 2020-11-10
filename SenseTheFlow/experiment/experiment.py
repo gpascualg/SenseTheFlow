@@ -292,7 +292,7 @@ class Experiment(object):
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -304,7 +304,7 @@ class Experiment(object):
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -588,7 +588,12 @@ class ExperimentRun(object):
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
             model_dir = self.experiment.get_model_directory()
-            ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
+            if optimizer is not None:
+                ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
+            else:
+                assert self.mode != Mode.TRAIN, "Optimizer must be used in Mode.TRAIN"
+                ckpt = tf.train.Checkpoint(stf=stf, net=model)
+
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
