@@ -588,22 +588,20 @@ class ExperimentRun(object):
 
             # Do we have to warm start?
             restore_information = pre_initialize_fn and pre_initialize_fn(self.experiment, model, self.mode, ckpt)
-            if restore_information and not isinstance(restore_information, (tuple, list)):
-                restore_information = restore_information, restore_information.assert_existing_objects_matched
+            if restore_information:
+                if isinstance(restore_information, (tuple, list)):
+                    restore_information[1]()
+                else:
+                    restore_information.assert_existing_objects_matched()
 
             # Restore from checkpoint
             if manager.latest_checkpoint:
                 restore_status = ckpt.restore(manager.latest_checkpoint)
-                restore_information = restore_status, restore_status.assert_existing_objects_matched
-                print("Restored from {}".format(manager.latest_checkpoint))
-                print(restore_status)
+                restore_status.assert_existing_objects_matched()
+                print("Restored iter {} from {}".format(int(step), manager.latest_checkpoint))
             else:
                 print("Initializing from scratch.")
-                            
-            # Make sure it is restored
-            if restore_information:
-                restore_information[1]()
-
+            
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
             self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
