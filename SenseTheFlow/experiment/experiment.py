@@ -546,11 +546,12 @@ class ExperimentRun(object):
         with tf.device('/gpu:{}'.format(gpu)):
             @tf.function
             def train_fn(data, step):
-                with tf.GradientTape() as tape:
-                    outputs = model(data, training=True, step=step)
-                    loss = outputs['loss']
-                    if model.losses:
-                        loss = loss + tf.add_n(model.losses)
+                with tf.device('/gpu:{}'.format(gpu)):
+                        with tf.GradientTape() as tape:
+                            outputs = model(data, training=True, step=step)
+                            loss = outputs['loss']
+                            if model.losses:
+                                loss = loss + tf.add_n(model.losses)
                 
                 gradients = tape.gradient(loss, model.trainable_variables)
                 # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
@@ -563,7 +564,8 @@ class ExperimentRun(object):
 
             @tf.function
             def test_fn(data, step):
-                return model(data, training=False, step=step)
+                with tf.device('/gpu:{}'.format(gpu)):
+                        return model(data, training=False, step=step)
                 
             step = tf.Variable(0, dtype=tf.int64)
             dataset = dataset_fn(self.mode, self.experiment.params)
