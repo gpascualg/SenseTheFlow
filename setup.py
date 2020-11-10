@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="SenseTheFlow-gpascualg", # Replace with your own username
-    version="0.0.2",
+    version="0.0.3",
     author="gpascualg",
     author_email="guillem.pascual@ub.edu",
     description="A tensorflow models library",

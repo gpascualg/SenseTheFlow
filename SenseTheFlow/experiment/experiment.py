@@ -694,7 +694,9 @@ class ExperimentRun(object):
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
                     hook(self.experiment, self.__step, None, None, model)
-            
+
+        print(step)
+        print(int(step)) 
         return model
 
 def keras_weight_path(model_name, include_top=False):
