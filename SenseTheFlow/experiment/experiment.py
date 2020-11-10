@@ -501,7 +501,11 @@ class ExperimentRun(object):
         if block:
             self.__checkpoint_hook.wait()
 
-    def __save(self, experiment, step, inputs, outputs, model, manager):
+    def __save(self, experiment, step, inputs, outputs, model, step_tensor):
+        model_dir = self.experiment.get_model_directory()
+        ckpt = tf.train.Checkpoint(step=step_tensor, net=model)
+        manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
+        
         save_path = manager.save()
         print("Saved checkpoint for step {}: {}".format(step, save_path))
         experiment._on_saved()
@@ -614,11 +618,11 @@ class ExperimentRun(object):
                 print("Initializing from scratch.")
 
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
-            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
+            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(step,), mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             if checkpoint_on_epoch:
-                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(manager,), mode=self.mode)
+                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(step,), mode=self.mode)
                 self.experiment.add_hook(Hookpoint.END, checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
