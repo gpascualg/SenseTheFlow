@@ -667,10 +667,6 @@ class ExperimentRun(object):
                             if postponed_assert is not None:
                                 postponed_assert()
 
-                            # Modify hooks preset arguments
-                            self.__checkpoint_hook.set_args(manager)
-                            self.__checkpoint_epoch_hook.set_args(manager)
-
                             # Post initialize hooks
                             post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
                             
@@ -678,6 +674,10 @@ class ExperimentRun(object):
                             for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
                                 if hook.ready(self.__step, self.mode):
                                     hook(self.experiment, self.__step, None, None, model)
+
+                            # Modify hooks preset arguments
+                            self.__checkpoint_hook.set_args(manager)
+                            self.__checkpoint_epoch_hook.set_args(manager)
 
                         # Update tqdm
                         self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
