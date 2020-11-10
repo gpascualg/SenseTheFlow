@@ -283,35 +283,35 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
             print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
             print("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
             checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
@@ -501,11 +501,7 @@ class ExperimentRun(object):
         if block:
             self.__checkpoint_hook.wait()
 
-    def __save(self, experiment, step, inputs, outputs, model, step_tensor):
-        model_dir = self.experiment.get_model_directory()
-        ckpt = tf.train.Checkpoint(step=step_tensor, net=model)
-        manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
-        
+    def __save(self, experiment, step, inputs, outputs, model, manager):
         save_path = manager.save()
         print("Saved checkpoint for step {}: {}".format(step, save_path))
         experiment._on_saved()
@@ -552,7 +548,7 @@ class ExperimentRun(object):
             
         return None
 
-    def _run_unsafe_2x(self, dataset_fn, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=None):
         # Failsafe
         model = None
         
@@ -586,10 +582,10 @@ class ExperimentRun(object):
             dataset = dataset_fn(self.mode, self.experiment.params)
             model = self.experiment(self.mode)
 
-            assert isinstance(getattr(model, "optimizer"), tf.keras.optimizers.Optimizer), "Model must have an `optimizer` member"
+            assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
             model_dir = self.experiment.get_model_directory()
-            ckpt = tf.train.Checkpoint(step=step, net=model)
+            ckpt = tf.train.Checkpoint(step=step, optimizer=optimizer, net=model)
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
 
             # Do we have to warm start?
@@ -618,11 +614,11 @@ class ExperimentRun(object):
                 print("Initializing from scratch.")
 
             # Create checkpoint hook if checkpoints enabled, and make sure it runs first
-            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(step,), mode=self.mode)
+            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, args=(manager,), mode=self.mode)
             self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             if checkpoint_on_epoch:
-                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(step,), mode=self.mode)
+                checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, args=(manager,), mode=self.mode)
                 self.experiment.add_hook(Hookpoint.END, checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
