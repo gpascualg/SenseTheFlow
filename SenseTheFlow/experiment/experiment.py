@@ -562,7 +562,7 @@ class ExperimentRun(object):
             
             gradients = tape.gradient(loss, model.trainable_variables)
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-            model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             
             # Increment step now
             step.assign_add(1)
