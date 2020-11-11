@@ -282,16 +282,16 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, sync=sync)
+            checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, reset_metrics_at_epoch_start=True, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -299,11 +299,11 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
+            checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, reset_metrics_at_epoch_start=True, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -311,7 +311,7 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, 
-            checkpoint_steps=None, checkpoint_on_epoch=False,sync=sync)
+            checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -551,7 +551,7 @@ class ExperimentRun(object):
             
         return None
 
-    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, sync=None):
         # Failsafe
         model = None
         
@@ -645,16 +645,17 @@ class ExperimentRun(object):
                         break
 
                     # Reset any metrics
-                    for attr, value in model.__dict__.items():
-                        attr = getattr(model, attr)
-                        if isinstance(attr, dict):
-                            attr = attr.values()
-                        elif not isinstance(attr, (list, tuple)):
-                            attr = [attr]
-                        
-                        for maybe_metric in attr:
-                            if isinstance(maybe_metric, tf.keras.metrics.Metric):
-                                maybe_metric.reset_states()
+                    if reset_metrics_at_epoch_start:
+                        for attr, value in model.__dict__.items():
+                            attr = getattr(model, attr)
+                            if isinstance(attr, dict):
+                                attr = attr.values()
+                            elif not isinstance(attr, (list, tuple)):
+                                attr = [attr]
+                            
+                            for maybe_metric in attr:
+                                if isinstance(maybe_metric, tf.keras.metrics.Metric):
+                                    maybe_metric.reset_states()
 
                     for data in iterator:
                         # Do the actual iter
