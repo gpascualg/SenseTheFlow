@@ -647,7 +647,7 @@ class ExperimentRun(object):
                     # Reset any metrics
                     if reset_metrics_at_epoch_start:
                         print('Resetting metrics')
-                        for metric in model.metrics():
+                        for metric in model.metrics:
                             with tf.device('/cpu:0'):
                                 metric.reset_states()
                             print('\tMetric {} has been reset ({})'.format(metric.name, metric.result()))
