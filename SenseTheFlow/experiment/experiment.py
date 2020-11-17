@@ -646,16 +646,11 @@ class ExperimentRun(object):
 
                     # Reset any metrics
                     if reset_metrics_at_epoch_start:
-                        for attr, value in model.__dict__.items():
-                            attr = getattr(model, attr)
-                            if isinstance(attr, dict):
-                                attr = attr.values()
-                            elif not isinstance(attr, (list, tuple)):
-                                attr = [attr]
-                            
-                            for maybe_metric in attr:
-                                if isinstance(maybe_metric, tf.keras.metrics.Metric):
-                                    maybe_metric.reset_states()
+                        print('Resetting metrics')
+                        for metric in model.metrics():
+                            with tf.device('/cpu:0'):
+                                metric.reset_states()
+                            print('\tMetric {} has been reset ({})'.format(metric.name, metric.value()))
 
                     for data in iterator:
                         # Do the actual iter
