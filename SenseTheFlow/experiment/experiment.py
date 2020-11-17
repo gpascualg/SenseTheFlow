@@ -650,7 +650,7 @@ class ExperimentRun(object):
                         for metric in model.metrics():
                             with tf.device('/cpu:0'):
                                 metric.reset_states()
-                            print('\tMetric {} has been reset ({})'.format(metric.name, metric.value()))
+                            print('\tMetric {} has been reset ({})'.format(metric.name, metric.result()))
 
                     for data in iterator:
                         # Do the actual iter
