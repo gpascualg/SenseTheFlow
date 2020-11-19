@@ -202,7 +202,7 @@ class ResNet50(tf.keras.Model):
         weights_path = tf.keras.utils.get_file(
             'resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
             'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
-            cache_subdir='models')
+            cache_subdir='models-stf')
 
         with h5py.File(weights_path, mode='r') as f:
             if 'layer_names' not in f.attrs and 'model_weights' in f:
