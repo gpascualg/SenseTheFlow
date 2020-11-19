@@ -1,3 +1,5 @@
+from ..helper import utils
+
 import tensorflow as tf
 import h5py
 
@@ -196,15 +198,15 @@ class ResNet50(tf.keras.Model):
         inputs = self.block4_iden2(inputs, training=training)
         return inputs
 
-    def load(self, filepath, by_name=False):
-        with h5py.File(filepath, mode='r') as f:
+    def load(self):
+        weights_path = tf.keras.utils.get_file(
+            'resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
+            'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
+            cache_subdir='models')
+
+        with h5py.File(weights_path, mode='r') as f:
             if 'layer_names' not in f.attrs and 'model_weights' in f:
                 f = f['model_weights']
 
-            layers = [[x] if not hasattr(x, 'layers') else x.layers for x in self.layers]
-            layers = sum(layers, [])
+            hdf5_format.load_weights_from_hdf5_group_by_name(f, utils.recurse_layers(self), skip_mismatch=False)
 
-            if by_name:
-                hdf5_format.load_weights_from_hdf5_group_by_name(f, layers, skip_mismatch=False)
-            else:
-                hdf5_format.load_weights_from_hdf5_group(f, layers)
