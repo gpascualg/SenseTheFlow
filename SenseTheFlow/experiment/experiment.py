@@ -557,7 +557,7 @@ class ExperimentRun(object):
 
         # Default gradients_fn
         if gradients_fn is None:
-            gradients_fn = lambda gradients, variables: zip(gradients, variables)
+            gradients_fn = lambda gradients, variables, step: zip(gradients, variables)
         
         @tf.function
         def train_fn(data, step):
@@ -569,7 +569,7 @@ class ExperimentRun(object):
             
             gradients = tape.gradient(loss, model.trainable_variables)
             # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-            optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables))
+            optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, step))
             
             return outputs
 
