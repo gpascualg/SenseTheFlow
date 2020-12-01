@@ -403,6 +403,18 @@ class ExperimentHook(object):
     def wait(self):
         self.__ready.wait()
 
+class SummaryHook(ExperimentHook):
+    def __init__(self, summary_mode, name, steps, callback, concurrent=True, args=(), mode=Mode.ANY):
+        super(SummaryHook, self).__init__(name=name, steps=steps, callback=callback, concurrent=concurrent, args=args, mode=mode)
+
+        self.summary_mode = summary_mode
+
+    def _call_callback(self, experiment, step, *args):
+        model_dir = experiment.get_model_directory()
+        writer = tf.summary.create_file_writer(os.path.join(model_dir, self.summary_mode.value))
+        with writer.as_default():
+            return super(SummaryHook, self)._call_callback(experiment, step, *args)
+
 class AsyncExecution(object):
     def __init__(self, experiment_run, *args, **kwargs):
         self.__experiment_run = experiment_run
