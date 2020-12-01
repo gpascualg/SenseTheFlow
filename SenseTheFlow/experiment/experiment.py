@@ -318,6 +318,12 @@ class Experiment(object):
     def _on_saved(self):
         self.__is_using_initialized_model = True
 
+    def execute_in_summary_environment(self, mode, callback, *args, **kwargs):
+        model_dir = self.get_model_directory()
+        writer = tf.summary.create_file_writer(os.path.join(model_dir, mode.value))
+        with writer.as_default():
+            return callback(*args, **kwargs)
+
 class ExperimentOutput(object):
     def __new__(cls, **kwargs):
         if sv.Version(tf.__version__).major == 1:
