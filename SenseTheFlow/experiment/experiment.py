@@ -569,6 +569,13 @@ class ExperimentRun(object):
             self.__ready.set()
             
         return None
+      
+    def reset_metrics(self, model):
+      with tf.device('/cpu:0'):
+        print('Resetting metrics in mode {}'.format(self.mode.value))
+        for metric in model.metrics:
+            metric.reset_states()
+            print('\tMetric {} has been reset'.format(metric.name))
 
     def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, sync=None):
         # Failsafe
@@ -656,13 +663,10 @@ class ExperimentRun(object):
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
           
-            # Force one iteration to load checkpoint
             with writer.as_default():
+                # Force one iteration to load checkpoint
                 first_data = next(iterator)
                 _ = model(first_data, training=False, step=0)
-                
-                if hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                    model.on_epoch(0)
 
                 # Assert loaded
                 if postponed_assert is not None:
@@ -675,6 +679,12 @@ class ExperimentRun(object):
                 for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
                     if hook.ready(self.__step, self.mode):
                         hook(self.experiment, self.__step, None, None, model)
+                
+                # First epoch reset
+                if reset_metrics_at_epoch_start:
+                    self.reset_metrics(model)
+                    if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                        model.on_epoch(0)
 
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
@@ -686,12 +696,8 @@ class ExperimentRun(object):
                         break
 
                     # Reset any metrics
-                    if reset_metrics_at_epoch_start:
-                        with tf.device('/cpu:0'):
-                          print('Resetting metrics in mode {}'.format(self.mode.value))
-                          for metric in model.metrics:
-                              metric.reset_states()
-                              print('\tMetric {} has been reset'.format(metric.name))
+                    if epoch > 0 and reset_metrics_at_epoch_start:
+                        self.reset_metrics(model)
                     
                     for data in it.chain([first_data], iterator):
                         # Do the actual iter
