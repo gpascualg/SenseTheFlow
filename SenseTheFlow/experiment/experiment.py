@@ -657,7 +657,7 @@ class ExperimentRun(object):
             self.__ready.set()
           
             # Force one iteration to load checkpoint
-            first_data = [next(iterator)]
+            first_data = next(iterator)
             _ = model(first_data, training=False, step=0)
                 
             # Assert loaded
@@ -694,7 +694,7 @@ class ExperimentRun(object):
                             except:
                                 print('\tMetric {} has been reset'.format(metric.name))
                     
-                    for data in it.chain(first_data, iterator):
+                    for data in it.chain([first_data], iterator):
                         # Do the actual iter
                         outputs = step_fn(data, stf.step)
             
