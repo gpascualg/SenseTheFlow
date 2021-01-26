@@ -5,6 +5,7 @@ import sys
 import tensorflow as tf
 import traceback as tb
 import semantic_version as sv
+import itertools as it
 
 from threading import Thread, Event, Lock, Condition
 from concurrent.futures import ThreadPoolExecutor
@@ -652,9 +653,24 @@ class ExperimentRun(object):
                 self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
-            first_iter = True
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
             self.__ready.set()
+          
+            # Force one iteration to load checkpoint
+            first_data = [next(iterator)]
+            _ = model(first_data, training=False, step=0)
+                
+            # Assert loaded
+            if postponed_assert is not None:
+                postponed_assert()
+
+            # Post initialize hooks (must have been initialized by now)
+            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+            # Execute hooks, if any
+            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                if hook.ready(self.__step, self.mode):
+                    hook(self.experiment, self.__step, None, None, model)
 
             with writer.as_default():
                 # Select function
@@ -678,28 +694,12 @@ class ExperimentRun(object):
                             except:
                                 print('\tMetric {} has been reset'.format(metric.name))
                     
-                    for data in iterator:
+                    for data in it.chain(first_data, iterator):
                         # Do the actual iter
                         outputs = step_fn(data, stf.step)
             
                         # Increment step now
                         self.__step = int(stf.step.assign_add(increment_amount))
-
-                        # If first step, check restoration and post_initialize hooks
-                        if first_iter:
-                            first_iter = False
-
-                            # Assert
-                            if postponed_assert is not None:
-                                postponed_assert()
-
-                            # Post initialize hooks
-                            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-                            
-                            # Execute hooks, if any
-                            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                                if hook.ready(self.__step, self.mode):
-                                    hook(self.experiment, self.__step, None, None, model)
 
                         # Update tqdm
                         self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
