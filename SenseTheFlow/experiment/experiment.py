@@ -664,42 +664,21 @@ class ExperimentRun(object):
             self.__ready.set()
           
             with writer.as_default():
-                # Force one iteration to load checkpoint
-                first_data = next(iterator)
-                _ = model(first_data, training=False, step=0)
-
-                # Assert loaded
-                if postponed_assert is not None:
-                    postponed_assert()
-
-                # Post initialize hooks (must have been initialized by now)
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-
-                # Execute hooks, if any
-                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                    if hook.ready(self.__step, self.mode):
-                        hook(self.experiment, self.__step, None, None, model)
-                
-                # First epoch reset
-                if reset_metrics_at_epoch_start:
-                    self.reset_metrics(model)
-                    if hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                        model.on_epoch(0)
-
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
                 increment_amount = 1 if self.mode == Mode.TRAIN else 0
 
                 # Run it all
+                first_iter = True
                 for self.epoch in range(epochs):
                     if self.__stop:
                         break
 
                     # Reset any metrics
-                    if epoch > 0 and reset_metrics_at_epoch_start:
+                    if self.epoch > 0 and reset_metrics_at_epoch_start:
                         self.reset_metrics(model)
                     
-                    for data in it.chain([first_data], iterator):
+                    for data in iterator:
                         # Do the actual iter
                         outputs = step_fn(data, stf.step)
             
@@ -708,6 +687,31 @@ class ExperimentRun(object):
 
                         # Update tqdm
                         self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
+                    
+                        if first_iter:
+                            first_iter = False
+                          
+                            # Assert loaded
+                            if postponed_assert is not None:
+                                postponed_assert()
+
+                            # Post initialize hooks (must have been initialized by now)
+                            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+                            # Execute hooks, if any
+                            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                                if hook.ready(self.__step, self.mode):
+                                    hook(self.experiment, self.__step, None, None, model)
+
+                            # First epoch reset
+                            if reset_metrics_at_epoch_start:
+                                self.reset_metrics(model)
+                                if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                                    model.on_epoch(stf.step)
+                                    
+                                # TODO(gpascualg): Is this the best way to do it?
+                                # Force a non-training pass to compensate the reset
+                                _ = model(data, training=False, step=stf.step)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
