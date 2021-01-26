@@ -657,22 +657,25 @@ class ExperimentRun(object):
             self.__ready.set()
           
             # Force one iteration to load checkpoint
-            first_data = next(iterator)
-            _ = model(first_data, training=False, step=0)
-                
-            # Assert loaded
-            if postponed_assert is not None:
-                postponed_assert()
-
-            # Post initialize hooks (must have been initialized by now)
-            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-
-            # Execute hooks, if any
-            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model)
-
             with writer.as_default():
+                first_data = next(iterator)
+                _ = model(first_data, training=False, step=0)
+                
+                if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                    model.on_epoch(0)
+
+                # Assert loaded
+                if postponed_assert is not None:
+                    postponed_assert()
+
+                # Post initialize hooks (must have been initialized by now)
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+                # Execute hooks, if any
+                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                    if hook.ready(self.__step, self.mode):
+                        hook(self.experiment, self.__step, None, None, model)
+
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
                 increment_amount = 1 if self.mode == Mode.TRAIN else 0
@@ -684,15 +687,11 @@ class ExperimentRun(object):
 
                     # Reset any metrics
                     if reset_metrics_at_epoch_start:
-                        print('Resetting metrics')
-                        for metric in model.metrics:
-                            with tf.device('/cpu:0'):
-                                metric.reset_states()
-                                
-                            try:
-                                print('\tMetric {} has been reset ({})'.format(metric.name, metric.result()))
-                            except:
-                                print('\tMetric {} has been reset'.format(metric.name))
+                        with tf.device('/cpu:0'):
+                          print('Resetting metrics in mode {}'.format(self.mode.value))
+                          for metric in model.metrics:
+                              metric.reset_states()
+                              print('\tMetric {} has been reset'.format(metric.name))
                     
                     for data in it.chain([first_data], iterator):
                         # Do the actual iter
