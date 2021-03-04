@@ -661,8 +661,14 @@ class ExperimentRun(object):
 
             # Summaries and signal ready
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
-            self.__ready.set()
-          
+
+            # Hacky way to set the record_if function
+            for x in it.chain((model,), model.submodules):
+                setattr(x, '_global_scope', tf.name_scope(''))
+            setattr(tf.keras.Model, 'recording_scope', lambda self: self._global_scope)
+            
+            # Signal and go
+            self.__ready.set()          
             with writer.as_default():
                 # Select function
                 step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
