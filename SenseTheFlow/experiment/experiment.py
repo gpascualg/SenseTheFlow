@@ -718,8 +718,8 @@ class ExperimentRun(object):
                         writer.flush()
                 
                 if hasattr(model, 'on_summary') and callable(model.on_summary):
-                    summary_hook = ExperimentHook.always('summary', with_writer, concurrent=False, mode=self.mode)
-                    self.experiment.add_hook(Hookpoint.EPOCH, summary_hook, silent=True)
+                    summary_hook = ExperimentHook('summary', summary_steps, with_writer, concurrent=False, mode=self.mode)
+                    self.experiment.add_hook(Hookpoint.LOOP, summary_hook, silent=True)
                 else:
                     print('Summary is enabled but the model does not have an on_summary function')
 
