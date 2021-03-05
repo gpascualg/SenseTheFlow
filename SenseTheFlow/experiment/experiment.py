@@ -3,6 +3,7 @@ import os
 import copy
 import sys
 import tensorflow as tf
+import numpy as np
 import traceback as tb
 import semantic_version as sv
 import itertools as it
@@ -299,16 +300,16 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -316,11 +317,11 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -328,7 +329,7 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -371,6 +372,9 @@ class ExperimentHook(object):
     @staticmethod
     def always(name, callback, concurrent=True, args=(), mode=Mode.ANY):
         return ExperimentHook(name, 1, callback, concurrent, args, mode)
+
+    def steps(self):
+        return self.__steps
 
     def ready(self, step, mode):
         if self.__skip_after_error:
@@ -592,7 +596,7 @@ class ExperimentRun(object):
             metric.reset_states()
             print('\tMetric {} has been reset'.format(metric.name))
 
-    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=None):
         # Failsafe
         model = None
 
@@ -639,9 +643,22 @@ class ExperimentRun(object):
 
             # Step function
             _step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
+            
+            # At most, report every 100 steps
+            _number_of_steps = np.gcd.reduce(
+                list(
+                    it.chain([100, summary_steps or 1, checkpoint_steps or 1], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
+                )
+            )
+
             @tf.function
-            def step_fn(iterator):
-                return strategy.run(_step_fn, args=(next(iterator),))
+            def run_multiple_steps(iterator):
+                for _ in tf.range(_number_of_steps):
+                    with tf.name_scope(''):
+                        data = next(iterator)
+                        result = strategy.run(_step_fn, args=(data,))
+
+                return data, result
 
             # Checkpoint manager
             model_dir = self.experiment.get_model_directory()
@@ -679,12 +696,20 @@ class ExperimentRun(object):
             else:
                 print("Initializing from scratch.")
 
-            # Create checkpoint hook if checkpoints enabled, and make sure it runs first
-            self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
-            self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
+            # Create different kind of hooks for summaries and checkpoints
+            if summary_steps:
+                if hasattr(model, 'on_summaries') and callable(model.on_summaries):
+                    summary_hook = ExperimentHook.always('summary', model.on_summaries, concurrent=False, mode=self.mode)
+                    self.experiment.add_hook(Hookpoint.EPOCH, summary_hook, silent=True)
+                else:
+                    print('Summary is enabled but the model does not have an on_summaries function')
+
+            if checkpoint_steps:
+                self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
+                self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
 
             if checkpoint_on_epoch:
-                self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epock', self.__save, concurrent=False, mode=self.mode)
+                self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epoch', self.__save, concurrent=False, mode=self.mode)
                 self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
 
             # Summaries and signal ready
@@ -714,7 +739,9 @@ class ExperimentRun(object):
                     while True:
                         # Do the actual iter
                         try:
-                            outputs = step_fn(iterator)
+                            data, outputs = run_multiple_steps(iterator)
+                            print(data)
+                            print(outputs)
                         except GeneratorExit:
                             # No more data
                             break
