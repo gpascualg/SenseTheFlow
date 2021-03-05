@@ -622,7 +622,6 @@ class ExperimentRun(object):
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
             # Define train/test functions
-            @tf.function
             def train_fn(data):
                 with tf.GradientTape() as tape:
                     outputs = model(data, training=True, step=stf.step)
@@ -635,9 +634,14 @@ class ExperimentRun(object):
                 optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, stf.step))
                 return outputs
 
-            @tf.function
             def test_fn(data):
                 return model(data, training=False, step=stf.step)
+
+            # Step function
+            _step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
+            @tf.function
+            def step_fn(iterator):
+                return strategy.run(_step_fn, args=(next(iterator),))
 
             # Checkpoint manager
             model_dir = self.experiment.get_model_directory()
@@ -695,7 +699,6 @@ class ExperimentRun(object):
             self.__ready.set()          
             with writer.as_default():
                 # Select function
-                step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
                 increment_amount = 1 if self.mode == Mode.TRAIN else 0
 
                 # Run it all
@@ -708,9 +711,13 @@ class ExperimentRun(object):
                     if self.epoch > 0 and reset_metrics_at_epoch_start:
                         self.reset_metrics(model)
                     
-                    for data in iterator:
+                    while True:
                         # Do the actual iter
-                        outputs = strategy.run(step_fn, args=(data,))
+                        try:
+                            outputs = step_fn(iterator)
+                        except GeneratorExit:
+                            # No more data
+                            break
             
                         # Increment step now
                         self.__step = int(stf.step.assign_add(increment_amount))
@@ -740,9 +747,7 @@ class ExperimentRun(object):
                                 if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
                                     model.on_epoch(stf.step)
                                     
-                                # TODO(gpascualg): Is this the best way to do it?
-                                # Force a non-training pass to compensate the reset
-                                _ = model(data, training=False, step=stf.step)
+                                # TODO(gpascualg): Resetting here means deleting the first iteration data, are we okay with that?
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
