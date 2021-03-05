@@ -714,14 +714,14 @@ class ExperimentRun(object):
                 # Summaries and signal ready
                 def with_writer(experiment, step, inputs, outputs, model, manager):
                     with writer.as_default():
-                        model.on_summaries(step)
+                        model.on_summary(step)
                         writer.flush()
                 
-                if hasattr(model, 'on_summaries') and callable(model.on_summaries):
+                if hasattr(model, 'on_summary') and callable(model.on_summary):
                     summary_hook = ExperimentHook.always('summary', with_writer, concurrent=False, mode=self.mode)
                     self.experiment.add_hook(Hookpoint.EPOCH, summary_hook, silent=True)
                 else:
-                    print('Summary is enabled but the model does not have an on_summaries function')
+                    print('Summary is enabled but the model does not have an on_summary function')
 
             if checkpoint_steps:
                 self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
