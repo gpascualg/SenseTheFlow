@@ -706,10 +706,12 @@ class ExperimentRun(object):
             else:
                 print("Initializing from scratch.")
 
+            # Create a writer, even if we don't end up using it
+            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
+
             # Create different kind of hooks for summaries and checkpoints
             if summary_steps:
                 # Summaries and signal ready
-                writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
                 def with_writer(experiment, step, inputs, outputs, model, manager):
                     with writer.as_default():
                         model.on_summaries(step)
@@ -739,82 +741,79 @@ class ExperimentRun(object):
             # Select function
             increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
 
-            # I'm not convinced this is working
-            with tf.init_scope():
-                # Assert loaded
-                if postponed_assert is not None:
-                    postponed_assert()
+            # Enter writer context
+            with writer.as_default():
+                # I'm not convinced this is working
+                with tf.init_scope():
+                    # Assert loaded
+                    if postponed_assert is not None:
+                        postponed_assert()
 
-                # Post initialize hooks (must have been initialized by now)
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+                    # Post initialize hooks (must have been initialized by now)
+                    post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
 
-                # Execute hooks, if any
-                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                    if hook.ready(self.__step, self.mode):
-                        with writer.as_default():
+                    # Execute hooks, if any
+                    for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                        if hook.ready(self.__step, self.mode):
                             hook(self.experiment, self.__step, None, None, model)
 
-                # First epoch reset
-                if reset_metrics_at_epoch_start:
-                    self.reset_metrics(model)
+                    # First epoch reset
+                    if reset_metrics_at_epoch_start:
+                        self.reset_metrics(model)
 
-                    if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                        with writer.as_default():
+                        if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
                             model.on_epoch(stf.step)
                             writer.flush()
-            
-            # Run it all
-            for self.epoch in range(epochs):
-                if self.__stop:
-                    break
 
-                # Reset any metrics
-                if self.epoch > 0 and reset_metrics_at_epoch_start:
-                    self.reset_metrics(model)
-                
-                while True:
-                    # Do the actual iter
-                    try:
-                        data, outputs = run_multiple_steps(iterator)
-                    except GeneratorExit:
-                        # No more data
-                        break
-        
-                    # Increment step now
-                    step_tensors = stf.step.assign_add(increment_amount)
-                    self.__step = int(strategy.experimental_local_results(step_tensors)[0])
-
-                    # Update tqdm
-                    loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
-                    self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
-                
-                    # User hooks
-                    for hook in self.experiment.get_hooks(Hookpoint.LOOP):
-                        if hook.ready(self.__step, self.mode):
-                            with writer.as_default():
-                                hook(self.experiment, self.__step, data, outputs, model, manager)
-
+                # Run it all
+                for self.epoch in range(epochs):
                     if self.__stop:
                         break
 
-                # Epoch done, do we have a callback?
-                if hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                    with writer.as_default():
+                    # Reset any metrics
+                    if self.epoch > 0 and reset_metrics_at_epoch_start:
+                        self.reset_metrics(model)
+                    
+                    while True:
+                        # Do the actual iter
+                        try:
+                            data, outputs = run_multiple_steps(iterator)
+                        except GeneratorExit:
+                            # No more data
+                            break
+            
+                        # Increment step now
+                        step_tensors = stf.step.assign_add(increment_amount)
+                        self.__step = int(strategy.experimental_local_results(step_tensors)[0])
+
+                        # Update tqdm
+                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
+                    
+                        # User hooks
+                        for hook in self.experiment.get_hooks(Hookpoint.LOOP):
+                            if hook.ready(self.__step, self.mode):
+                                hook(self.experiment, self.__step, data, outputs, model, manager)
+
+                        if self.__stop:
+                            break
+
+                    # Epoch done, do we have a callback?
+                    if hasattr(model, 'on_epoch') and callable(model.on_epoch):
                         model.on_epoch(stf.step)
                         writer.flush()
 
-                # Update tqdm
-                self.__update_epochs_bar()
-                stf.epoch.assign_add(1)
+                    # Update tqdm
+                    self.__update_epochs_bar()
+                    stf.epoch.assign_add(1)
 
-            # Free current GPU
-            self.__close_bars()
-            self.experiment.free_devices(devices)
+                # Free current GPU
+                self.__close_bars()
+                self.experiment.free_devices(devices)
 
-            # Execute hooks, if any
-            for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
-                if hook.ready(self.__step, self.mode):
-                    with writer.as_default():
+                # Execute hooks, if any
+                for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
+                    if hook.ready(self.__step, self.mode):
                         hook(self.experiment, self.__step, None, None, model, manager)
 
         return model
