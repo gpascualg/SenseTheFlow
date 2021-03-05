@@ -633,6 +633,7 @@ class ExperimentRun(object):
                     if model.losses:
                         loss = loss + tf.add_n(model.losses)
                 
+                loss = loss / strategy.num_replicas_in_sync
                 gradients = tape.gradient(loss, model.trainable_variables)
                 # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
                 optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, stf.step))
@@ -651,17 +652,23 @@ class ExperimentRun(object):
                     it.chain([summary_steps or upper_bound, checkpoint_steps or upper_bound], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
                 )
             ))
+
+            # Eval/test will run for only 1 time
+            if self.mode != Mode.TRAIN:
+                _number_of_steps = 1
+
             print('Will run for {} steps'.format(_number_of_steps))
 
             @tf.function
             def run_multiple_steps(iterator):
-                for _ in tf.range(_number_of_steps):
+                for _ in tf.range(_number_of_steps - 1):
                     with tf.name_scope(''):
                         data = next(iterator)
                         strategy.run(_step_fn, args=(data,))
-
-                return 0, 0
-                #return data, result
+                
+                data = next(iterator)
+                result = strategy.run(_step_fn, args=(data,))
+                return data, result
 
             # Checkpoint manager
             model_dir = self.experiment.get_model_directory()
@@ -727,7 +734,7 @@ class ExperimentRun(object):
             self.__ready.set()          
             with writer.as_default():
                 # Select function
-                increment_amount = 1 if self.mode == Mode.TRAIN else 0
+                increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
 
                 # Run it all
                 first_iter = True
@@ -750,10 +757,12 @@ class ExperimentRun(object):
                             break
             
                         # Increment step now
-                        self.__step = int(stf.step.assign_add(increment_amount))
+                        step_tensors = stf.step.assign_add(increment_amount)
+                        self.__step = int(strategy.experimental_local_results(step_tensors)[0])
 
                         # Update tqdm
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(outputs['loss'])), increment_amount)
+                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
                     
                         if first_iter:
                             first_iter = False
