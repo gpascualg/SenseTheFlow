@@ -778,7 +778,7 @@ class ExperimentRun(object):
                         # Do the actual iter
                         try:
                             data, outputs = run_multiple_steps(iterator)
-                        except GeneratorExit:
+                        except (tf.errors.OutOfRangeError, GeneratorExit):
                             # No more data
                             break
             
