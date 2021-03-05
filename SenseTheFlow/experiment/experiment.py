@@ -645,11 +645,12 @@ class ExperimentRun(object):
             _step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
             
             # At most, report every 100 steps
-            _number_of_steps = np.gcd.reduce(
+            upper_bound = 100
+            _number_of_steps = int(np.gcd.reduce(
                 list(
-                    it.chain([100, summary_steps or 1, checkpoint_steps or 1], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
+                    it.chain([summary_steps or upper_bound, checkpoint_steps or upper_bound], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
                 )
-            )
+            ))
             print('Will run for {} steps'.format(_number_of_steps))
 
             @tf.function
