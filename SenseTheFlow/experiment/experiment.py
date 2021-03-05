@@ -59,8 +59,9 @@ class Experiment(object):
         # Private variables
         self.__model_cls = model_cls
         self.__data = []
-        self.__gpu = None
-        self.__gpu_lock = Lock()
+        self.__devices = []
+        self.__devices_usage = {}
+        self.__devices_lock = Lock()
 
         # Predefined path
         if persistent_path is None:
@@ -162,17 +163,23 @@ class Experiment(object):
     def set_remote_execution(self):
         self.__is_remote_execution = True
 
-    def assign_gpu(self, gpu):
-        if not isinstance(gpu, (list, tuple)):
-            gpu = (gpu,)
+    def assign_gpu(self, gpus):
+        if not isinstance(gpus, (list, tuple)):
+            gpus = (gpus,)
 
-        self.__gpu = {'/gpu:{}'.format(g): 0 for g in gpu}
+        self.__devices.append(gpus)
+
+        for device in gpus:
+            self.__devices[device] = 0
         
-    def assign_device(self, device):
-        if not isinstance(device, (list, tuple)):
-            device = (device,)
+    def assign_device(self, devices):
+        if not isinstance(devices, (list, tuple)):
+            devices = (devices,)
 
-        self.__gpu = {d: 0 for d in device}
+        self.__devices.append(devices)
+
+        for device in devices:
+            self.__devices[device] = 0
 
     def add_data(self, method, uri_type, uri):
         if uri_type == UriType.PERSISTENT:
@@ -207,19 +214,26 @@ class Experiment(object):
         if self.__on_stop:
             self.__on_stop(self)
 
-    def get_device(self):
-        assert self.__gpu is not None, "Got an invalid GPU"
+    def get_devices(self):
+        assert self.__devices, "There is no devices available"
 
-        with self.__gpu_lock:
-            gpu = min(self.__gpu.items(), key=lambda x: x[1])[0]
-            self.__gpu[gpu] += 1
-            return gpu
+        with self.__devices_lock:
+            devices = self.__devices.pop(0)
+            for device in devices:
+                self.__devices_usage[device] += 1
+                
+            return devices
 
-    def free_device(self, gpu):
-        assert self.__gpu is not None, "Got an invalid GPU"
+    def free_devices(self, devices):
+        if not isinstance(devices, (list, tuple)):
+            devices = (devices,)
+        
+        for device in devices:
+            assert device in self.__devices_usage, "Got an invalid device"
+            self.__devices_usage[device] -= 1
 
-        with self.__gpu_lock:
-            self.__gpu[gpu] -= 1
+        with self.__devices_lock:
+            self.__devices.append(devices)
 
     def get_persistant_path(self):
         if not self.__is_remote_execution:
@@ -490,8 +504,8 @@ class ExperimentRun(object):
         # Create bars now, won't work properly later
         self.use_bars = use_bars
         if self.use_bars:
-            self.__epochs_bar = bar(leave=leave_bars)
-            self.__steps_bar = bar(leave=leave_bars)
+            self.__epochs_bar = bar(leave=leave_bars, ncols='100px')
+            self.__steps_bar = bar(leave=leave_bars, ncols='100px')
         
         # To allow execution re-attaching
         self.__step = -1
@@ -500,7 +514,6 @@ class ExperimentRun(object):
         # Trigger hook right now
         self.__checkpoint_hook = None
         self.__checkpoint_epoch_hook = None
-        self.__summaries_hook = None
 
         # Avoid weird issues with hook signaling
         self.__ready = Event()
@@ -512,7 +525,7 @@ class ExperimentRun(object):
             self.__steps_bar.close()
         
             # Create new bar
-            self.__steps_bar = bar()
+            self.__steps_bar = bar(ncols='100px')
             self.__steps_bar.update(self.__step)
 
     def save(self, block=True):
@@ -584,38 +597,47 @@ class ExperimentRun(object):
         # Default gradients_fn
         if gradients_fn is None:
             gradients_fn = lambda gradients, variables, step: zip(gradients, variables)
-        
-        @tf.function
-        def train_fn(data, step):
-            with tf.GradientTape() as tape:
-                outputs = model(data, training=True, step=step)
-                loss = outputs['loss']
-                if model.losses:
-                    loss = loss + tf.add_n(model.losses)
-            
-            gradients = tape.gradient(loss, model.trainable_variables)
-            # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-            optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, step))
-            
-            return outputs
 
-        @tf.function
-        def test_fn(data, step):
-            return model(data, training=False, step=step)
+        # Setup execution strategy
+        devices = self.experiment.get_devices()
+        strategy = tf.distribute.MirroredStrategy(devices)
 
-        # Get a GPU for execution
-        device = self.experiment.get_device()
-        with tf.device(device):
+        with strategy.scope():
+            # Create model
             model = self.experiment(self.mode)
-            dataset = dataset_fn(self.mode, self.experiment.params)
+
+            # Get dataset _input_fn
+            dataset_input_fn = dataset_fn(strategy, self.mode, self.experiment.params)
+            dataset = strategy.distribute_datasets_from_function(dataset_input_fn)
             iterator = iter(dataset)
 
+            # Internal data
             stf = tf.Module()
             stf.step = tf.Variable(0, dtype=tf.int64, trainable=False)
             stf.epoch = tf.Variable(0, dtype=tf.int64, trainable=False)
 
+            # Backward incompatible code
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
+            # Define train/test functions
+            @tf.function
+            def train_fn(data):
+                with tf.GradientTape() as tape:
+                    outputs = model(data, training=True, step=stf.step)
+                    loss = outputs['loss']
+                    if model.losses:
+                        loss = loss + tf.add_n(model.losses)
+                
+                gradients = tape.gradient(loss, model.trainable_variables)
+                # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
+                optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, stf.step))
+                return outputs
+
+            @tf.function
+            def test_fn(data):
+                return model(data, training=False, step=stf.step)
+
+            # Checkpoint manager
             model_dir = self.experiment.get_model_directory()
             if optimizer is not None:
                 ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
@@ -662,10 +684,10 @@ class ExperimentRun(object):
             # Summaries and signal ready
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
 
-            # Hacky way to set the record_if function
+            # Hacky way to set the global scope function
             for x in it.chain((model,), model.submodules):
                 setattr(x, '_global_scope', tf.name_scope(''))
-            setattr(tf.keras.Model, 'recording_scope', lambda self: self._global_scope)
+            setattr(tf.keras.Model, 'global_scope', lambda self: self._global_scope)
             
             # Signal and go
             self.__ready.set()          
@@ -686,7 +708,7 @@ class ExperimentRun(object):
                     
                     for data in iterator:
                         # Do the actual iter
-                        outputs = step_fn(data, stf.step)
+                        outputs = strategy.run(step_fn, args=(data,))
             
                         # Increment step now
                         self.__step = int(stf.step.assign_add(increment_amount))
@@ -738,7 +760,7 @@ class ExperimentRun(object):
 
             # Free current GPU
             self.__close_bars()
-            self.experiment.free_device(device)
+            self.experiment.free_devices(devices)
 
             # Execute hooks, if any
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
