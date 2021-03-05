@@ -633,11 +633,11 @@ class ExperimentRun(object):
                     if model.losses:
                         loss = loss + tf.add_n(model.losses)
                 
-                loss = loss / strategy.num_replicas_in_sync
-                gradients = tape.gradient(loss, model.trainable_variables)
-                # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
-                optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, stf.step))
-                return outputs
+                    loss = loss / strategy.num_replicas_in_sync
+                    gradients = tape.gradient(loss, model.trainable_variables)
+                    # TODO(gpascualg): Adding hooks here needs some work, it's not as trivial
+                    optimizer.apply_gradients(gradients_fn(gradients, model.trainable_variables, stf.step))
+                    return outputs
 
             def test_fn(data):
                 return model(data, training=False, step=stf.step)
