@@ -170,7 +170,7 @@ class Experiment(object):
         self.__devices.append(gpus)
 
         for device in gpus:
-            self.__devices[device] = 0
+            self.__devices_usage[device] = 0
         
     def assign_device(self, devices):
         if not isinstance(devices, (list, tuple)):
@@ -179,7 +179,7 @@ class Experiment(object):
         self.__devices.append(devices)
 
         for device in devices:
-            self.__devices[device] = 0
+            self.__devices_usage[device] = 0
 
     def add_data(self, method, uri_type, uri):
         if uri_type == UriType.PERSISTENT:
