@@ -650,6 +650,7 @@ class ExperimentRun(object):
                     it.chain([100, summary_steps or 1, checkpoint_steps or 1], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
                 )
             )
+            print('Will run for {} steps'.format(_number_of_steps))
 
             @tf.function
             def run_multiple_steps(iterator):
