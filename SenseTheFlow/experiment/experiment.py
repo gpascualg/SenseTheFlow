@@ -510,8 +510,8 @@ class ExperimentRun(object):
         # Create bars now, won't work properly later
         self.use_bars = use_bars
         if self.use_bars:
-            self.__epochs_bar = bar(leave=leave_bars, ncols='100px')
-            self.__steps_bar = bar(leave=leave_bars, ncols='100px')
+            self.__epochs_bar = bar(leave=leave_bars, ncols='100%')
+            self.__steps_bar = bar(leave=leave_bars, ncols='100%')
         
         # To allow execution re-attaching
         self.__step = -1
@@ -531,7 +531,7 @@ class ExperimentRun(object):
             self.__steps_bar.close()
         
             # Create new bar
-            self.__steps_bar = bar(ncols='100px')
+            self.__steps_bar = bar(ncols='100%')
             self.__steps_bar.update(self.__step)
 
     def save(self, block=True):
@@ -653,18 +653,17 @@ class ExperimentRun(object):
                 )
             ))
 
-            # Eval/test will run for only 1 time
-            if self.mode != Mode.TRAIN:
-                _number_of_steps = 1
+            # # Eval/test will run for only 1 time
+            # if self.mode != Mode.TRAIN:
+            #     _number_of_steps = 1
 
-            print('Will run for {} steps'.format(_number_of_steps))
+            print('Will run for {} steps at a time'.format(_number_of_steps))
 
             @tf.function
             def run_multiple_steps(iterator):
                 for _ in tf.range(_number_of_steps - 1):
                     with tf.name_scope(''):
-                        data = next(iterator)
-                        strategy.run(_step_fn, args=(data,))
+                        strategy.run(_step_fn, args=(next(iterator),))
                 
                 data = next(iterator)
                 result = strategy.run(_step_fn, args=(data,))
@@ -697,19 +696,27 @@ class ExperimentRun(object):
                 else:
                     postponed_assert = restore_information.assert_existing_objects_matched
 
-                self.__step = int(stf.step)
+                self.__step = int(strategy.experimental_local_results(stf.step)[0])
+                epoch = int(strategy.experimental_local_results(stf.epoch)[0])
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
                 print(message)
                 self.__update_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
-                self.__update_epochs_bar(int(stf.epoch))
+                self.__update_epochs_bar(epoch)
             else:
                 print("Initializing from scratch.")
 
             # Create different kind of hooks for summaries and checkpoints
             if summary_steps:
+                # Summaries and signal ready
+                writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
+                def with_writer(experiment, step, inputs, outputs, model, manager):
+                    with writer.as_default():
+                        model.on_summaries(step)
+                        writer.flush()
+                
                 if hasattr(model, 'on_summaries') and callable(model.on_summaries):
-                    summary_hook = ExperimentHook.always('summary', model.on_summaries, concurrent=False, mode=self.mode)
+                    summary_hook = ExperimentHook.always('summary', with_writer, concurrent=False, mode=self.mode)
                     self.experiment.add_hook(Hookpoint.EPOCH, summary_hook, silent=True)
                 else:
                     print('Summary is enabled but the model does not have an on_summaries function')
@@ -722,87 +729,83 @@ class ExperimentRun(object):
                 self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epoch', self.__save, concurrent=False, mode=self.mode)
                 self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
 
-            # Summaries and signal ready
-            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
-
             # Hacky way to set the global scope function
             for x in it.chain((model,), model.submodules):
                 setattr(x, '_global_scope', tf.name_scope(''))
             setattr(tf.keras.Model, 'global_scope', lambda self: self._global_scope)
             
             # Signal and go
-            self.__ready.set()          
-            with writer.as_default():
-                # Select function
-                increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
+            self.__ready.set()
+            # Select function
+            increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
 
-                # Run it all
-                first_iter = True
-                for self.epoch in range(epochs):
+            # I'm not convinced this is working
+            with tf.init_scope():
+                # Assert loaded
+                if postponed_assert is not None:
+                    postponed_assert()
+
+                # Post initialize hooks (must have been initialized by now)
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+                # Execute hooks, if any
+                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                    if hook.ready(self.__step, self.mode):
+                        with writer.as_default():
+                            hook(self.experiment, self.__step, None, None, model)
+
+                # First epoch reset
+                if reset_metrics_at_epoch_start:
+                    self.reset_metrics(model)
+
+                    if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                        with writer.as_default():
+                            model.on_epoch(stf.step)
+                            writer.flush()
+            
+            # Run it all
+            for self.epoch in range(epochs):
+                if self.__stop:
+                    break
+
+                # Reset any metrics
+                if self.epoch > 0 and reset_metrics_at_epoch_start:
+                    self.reset_metrics(model)
+                
+                while True:
+                    # Do the actual iter
+                    try:
+                        data, outputs = run_multiple_steps(iterator)
+                    except GeneratorExit:
+                        # No more data
+                        break
+        
+                    # Increment step now
+                    step_tensors = stf.step.assign_add(increment_amount)
+                    self.__step = int(strategy.experimental_local_results(step_tensors)[0])
+
+                    # Update tqdm
+                    loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
+                    self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
+                
+                    # User hooks
+                    for hook in self.experiment.get_hooks(Hookpoint.LOOP):
+                        if hook.ready(self.__step, self.mode):
+                            with writer.as_default():
+                                hook(self.experiment, self.__step, data, outputs, model, manager)
+
                     if self.__stop:
                         break
 
-                    # Reset any metrics
-                    if self.epoch > 0 and reset_metrics_at_epoch_start:
-                        self.reset_metrics(model)
-                    
-                    while True:
-                        # Do the actual iter
-                        try:
-                            data, outputs = run_multiple_steps(iterator)
-                            print(data)
-                            print(outputs)
-                        except GeneratorExit:
-                            # No more data
-                            break
-            
-                        # Increment step now
-                        step_tensors = stf.step.assign_add(increment_amount)
-                        self.__step = int(strategy.experimental_local_results(step_tensors)[0])
-
-                        # Update tqdm
-                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
-                    
-                        if first_iter:
-                            first_iter = False
-                          
-                            # Assert loaded
-                            if postponed_assert is not None:
-                                postponed_assert()
-
-                            # Post initialize hooks (must have been initialized by now)
-                            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-
-                            # Execute hooks, if any
-                            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                                if hook.ready(self.__step, self.mode):
-                                    hook(self.experiment, self.__step, None, None, model)
-
-                            # First epoch reset
-                            if reset_metrics_at_epoch_start:
-                                self.reset_metrics(model)
-
-                                if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                                    model.on_epoch(stf.step)
-                                    
-                                # TODO(gpascualg): Resetting here means deleting the first iteration data, are we okay with that?
-
-                        # User hooks
-                        for hook in self.experiment.get_hooks(Hookpoint.LOOP):
-                            if hook.ready(self.__step, self.mode):
-                                hook(self.experiment, self.__step, data, outputs, model, manager)
-
-                        if self.__stop:
-                            break
-
-                    # Epoch done, do we have a callback?
-                    if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                # Epoch done, do we have a callback?
+                if hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                    with writer.as_default():
                         model.on_epoch(stf.step)
+                        writer.flush()
 
-                    # Update tqdm
-                    self.__update_epochs_bar()
-                    stf.epoch.assign_add(1)
+                # Update tqdm
+                self.__update_epochs_bar()
+                stf.epoch.assign_add(1)
 
             # Free current GPU
             self.__close_bars()
@@ -811,7 +814,8 @@ class ExperimentRun(object):
             # Execute hooks, if any
             for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                 if hook.ready(self.__step, self.mode):
-                    hook(self.experiment, self.__step, None, None, model, manager)
+                    with writer.as_default():
+                        hook(self.experiment, self.__step, None, None, model, manager)
 
         return model
 
