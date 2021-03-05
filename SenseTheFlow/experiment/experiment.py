@@ -607,7 +607,7 @@ class ExperimentRun(object):
             model = self.experiment(self.mode)
 
             # Get dataset _input_fn
-            dataset_input_fn = dataset_fn(strategy, self.mode, self.experiment.params)
+            dataset_input_fn = dataset_fn(self.mode, self.experiment.params)
             dataset = strategy.distribute_datasets_from_function(dataset_input_fn)
             iterator = iter(dataset)
 
