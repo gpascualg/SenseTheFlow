@@ -658,9 +658,10 @@ class ExperimentRun(object):
                 for _ in tf.range(_number_of_steps):
                     with tf.name_scope(''):
                         data = next(iterator)
-                        result = strategy.run(_step_fn, args=(data,))
+                        strategy.run(_step_fn, args=(data,))
 
-                return data, result
+                return 0, 0
+                #return data, result
 
             # Checkpoint manager
             model_dir = self.experiment.get_model_directory()
