@@ -167,6 +167,8 @@ class Experiment(object):
         if not isinstance(gpus, (list, tuple)):
             gpus = (gpus,)
 
+        # Format gpus
+        gpus = ['/gpu:{}'.format(x) for x in gpus]
         self.__devices.append(gpus)
 
         for device in gpus:
