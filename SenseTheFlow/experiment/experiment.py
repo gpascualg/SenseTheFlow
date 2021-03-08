@@ -324,16 +324,17 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, 
+            input_shape=input_shape, input_type=input_type, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -341,11 +342,12 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, 
+            input_shape=input_shape, input_type=input_type, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -353,7 +355,8 @@ class Experiment(object):
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, 
+            input_shape=input_shape, input_type=input_type, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -620,7 +623,39 @@ class ExperimentRun(object):
             metric.reset_states()
             logger.debug('\tMetric {} has been reset'.format(metric.name))
 
-    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, sync=None):
+    def _build(self, strategy, model, input_shape, input_type):
+        valid_types = (tuple, list, dict)
+        if not isinstance(input_shape, valid_types):
+            raise ValueError('Specified input shape is not one of the valid types. '
+                            'Please specify a batch input shape of type tuple or '
+                            'list of input shapes. User provided '
+                            'input type: {}'.format(type(input_shape)))
+
+        if tf.executing_eagerly():
+            graph = tf.Graph('build_graph')
+        else:
+            graph = tf.compat.v1.get_default_graph()
+
+        with graph.as_default():
+            if (isinstance(input_shape, list) and
+                all(d is None or isinstance(d, int) for d in input_shape)):
+                input_shape = tuple(input_shape)
+            
+            if isinstance(input_shape, list):
+                x = [tf.keras.backend.placeholder(shape=shape, dtype=dtype) for shape, dtype in zip(input_shape, input_type)]
+            elif isinstance(input_shape, dict):
+                x = {
+                    k: tf.keras.backend.placeholder(shape=shape, dtype=input_type[k])
+                    for k, shape in input_shape.items()
+                }
+            else:
+                x = tf.keras.backend.placeholder(shape=input_shape, dtype=input_type)
+
+            strategy.run(model.call, args=(x, False, -1))
+
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
+        summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, 
+        input_shape=None, input_type=None, sync=None):
         # Failsafe
         model = None
 
@@ -739,7 +774,7 @@ class ExperimentRun(object):
                     assert False, "Using one of 'post_initialize_fn', 'Hookpoint.POST_INITIALIZATION' or 'reset_metrics_at_epoch_start' requires to submit an 'input_shape'"
 
                 # Build model
-                model.build(input_shape)
+                self._build(strategy, model, input_shape, input_type)
 
                 # Assert loaded
                 if postponed_assert is not None:
