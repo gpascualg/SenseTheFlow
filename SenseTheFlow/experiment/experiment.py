@@ -902,6 +902,10 @@ class ExperimentRun(object):
                         except (tf.errors.OutOfRangeError, GeneratorExit):
                             # No more data
                             break
+                        except Exception as e:
+                            logger.critical('Fatal error during execution in mode %s: %s', self.mode.value, str(e))
+                            tb.print_exc()
+                            break
                         
                         # Assert loaded in case we didn't do it before
                         if postponed_assert is not None:
