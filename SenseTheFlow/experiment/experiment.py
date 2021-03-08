@@ -547,6 +547,7 @@ class ExperimentRun(object):
 
         # Create bars now, won't work properly later
         self.use_bars = use_bars
+        self.leave_bars = leave_bars
         if self.use_bars:
             self.__epochs_bar = bar(leave=leave_bars, ncols='100%')
             self.__steps_bar = bar(leave=leave_bars, ncols='100%')
@@ -569,7 +570,7 @@ class ExperimentRun(object):
             self.__steps_bar.close()
         
             # Create new bar
-            self.__steps_bar = bar(ncols='100%', initial=self.__step)
+            self.__steps_bar = bar(leave=self.leave_bars, ncols='100%', initial=self.__step)
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
@@ -591,7 +592,7 @@ class ExperimentRun(object):
     def __reset_steps_bar(self, description, amount=1):
         if self.use_bars:
             self.__steps_bar.close()
-            self.__steps_bar = bar(ncols='100%', initial=amount)
+            self.__steps_bar = bar(leave=self.leave_bars, ncols='100%', initial=amount)
             self.__steps_bar.set_description(description)
 
     def __update_steps_bar(self, description, amount=1):
@@ -602,7 +603,7 @@ class ExperimentRun(object):
     def __reset_epochs_bar(self, amount=1):
         if self.use_bars:
             self.__epochs_bar.close()
-            self.__epochs_bar = bar(ncols='100%', initial=amount)
+            self.__epochs_bar = bar(leave=self.leave_bars, ncols='100%', initial=amount)
 
     def __update_epochs_bar(self, amount=1):
         if self.use_bars:
@@ -792,8 +793,8 @@ class ExperimentRun(object):
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
                 logger.info(message)
-                self.__reset_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
                 self.__reset_epochs_bar(epoch)
+                self.__reset_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
             else:
                 logger.info("Initializing from scratch: %s", model_dir)
 
