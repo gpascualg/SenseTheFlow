@@ -20,9 +20,11 @@ from .mode import Mode, Hookpoint
 
 
 logger = logging.getLogger('SenseTheFlow')
+default_optimizer_config = tf.config.optimizer.get_experimental_options()
 
                     
 def default_config(soft_device_placement=True, log_device_placement=False):
+    tf.config.optimizer.set_experimental_options(default_optimizer_config)
     tf.debugging.set_log_device_placement(log_device_placement)
     tf.config.set_soft_device_placement(soft_device_placement)
 
@@ -36,6 +38,24 @@ def default_config(soft_device_placement=True, log_device_placement=False):
         logger.info('%d Physical GPUs, %d Logical GPUs', len(gpus), len(logical_gpus))
     else:
         raise NotImplementedError("No GPUs found")
+
+def release_config(auto_mixed_precision=False):
+    tf.config.optimizer.set_experimental_options({
+        'layout_optimizer':                 True,
+        'constant_folding':                 True,
+        'shape_optimization':               True,
+        'remapping':                        True,
+        'arithmetic_optimization':          True,
+        'dependency_optimization':          True,
+        'loop_optimization':                True,
+        'function_optimization':            True,
+        'debug_stripper':                   True,
+        'disable_model_pruning':            False,
+        'scoped_allocator_optimization':    True,
+        'pin_to_host_optimization':         True,
+        'implementation_selector':          True,
+        'auto_mixed_precision':             auto_mixed_precision
+    })
 
 class Experiment(object):
     Instances = {}
