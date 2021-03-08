@@ -724,6 +724,7 @@ class ExperimentRun(object):
         with strategy.scope():
             # Create model
             model = self.experiment(self.mode)
+            model_dir = self.experiment.get_model_directory()
 
             # Get dataset _input_fn
             dataset_input_fn = dataset_fn(self.mode, self.experiment.params)
@@ -737,6 +738,32 @@ class ExperimentRun(object):
 
             # Backward incompatible code
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
+
+            # Create a writer, even if we don't end up using it
+            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
+
+            # Create different kind of hooks for summaries and checkpoints
+            #   before executing any initialize_fn or otherwise, create checkpoint hooks
+            if summary_steps:
+                # Summaries and signal ready
+                def with_writer(experiment, step, inputs, outputs, model, manager):
+                    with writer.as_default():
+                        model.on_summary(step)
+                        writer.flush()
+                
+                if hasattr(model, 'on_summary') and callable(model.on_summary):
+                    summary_hook = ExperimentHook('summary', summary_steps, with_writer, concurrent=False, mode=self.mode)
+                    self.experiment.add_hook(Hookpoint.LOOP, summary_hook, silent=True)
+                else:
+                    logger.critical('Summary is enabled but the model does not have an on_summary function')
+
+            if checkpoint_steps:
+                self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
+                self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
+
+            if checkpoint_on_epoch:
+                self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epoch', self.__save, concurrent=False, mode=self.mode)
+                self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
 
             # Define train/test functions
             def train_fn(data):
@@ -755,36 +782,7 @@ class ExperimentRun(object):
             def test_fn(data):
                 return model(data, training=False, step=stf.step)
 
-            # Step function
-            _step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
-            
-            # At most, report every 100 steps
-            _number_of_steps = int(np.gcd.reduce(
-                list(
-                    it.chain([summary_steps or report_steps_upper_bound, checkpoint_steps or report_steps_upper_bound], (
-                        x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP) if x.mode == Mode.ANY or x.mode == self.mode
-                    ))
-                )
-            ))
-
-            # # Eval/test will run for only 1 time
-            # if self.mode != Mode.TRAIN:
-            #     _number_of_steps = 1
-
-            logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
-
-            @tf.function
-            def run_multiple_steps(iterator):
-                for _ in tf.range(_number_of_steps - 1):
-                    with tf.name_scope(''):
-                        strategy.run(_step_fn, args=(next(iterator),))
-                
-                data = next(iterator)
-                result = strategy.run(_step_fn, args=(data,))
-                return data, result
-
             # Checkpoint manager
-            model_dir = self.experiment.get_model_directory()
             if optimizer is not None:
                 ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
             else:
@@ -845,42 +843,36 @@ class ExperimentRun(object):
             if reset_metrics_at_epoch_start:
                 self.reset_metrics(model)
 
-            # Create a writer, even if we don't end up using it
-            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
-
-            # Create different kind of hooks for summaries and checkpoints
-            if summary_steps:
-                # Summaries and signal ready
-                def with_writer(experiment, step, inputs, outputs, model, manager):
-                    with writer.as_default():
-                        model.on_summary(step)
-                        writer.flush()
-                
-                if hasattr(model, 'on_summary') and callable(model.on_summary):
-                    summary_hook = ExperimentHook('summary', summary_steps, with_writer, concurrent=False, mode=self.mode)
-                    self.experiment.add_hook(Hookpoint.LOOP, summary_hook, silent=True)
-                else:
-                    logger.critical('Summary is enabled but the model does not have an on_summary function')
-
-            if checkpoint_steps:
-                self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
-                self.experiment.add_hook(Hookpoint.LOOP, self.__checkpoint_hook, prepend=True, silent=True)
-
-            if checkpoint_on_epoch:
-                self.__checkpoint_epoch_hook = ExperimentHook.always('checkpoint-epoch', self.__save, concurrent=False, mode=self.mode)
-                self.experiment.add_hook(Hookpoint.EPOCH, self.__checkpoint_epoch_hook, silent=True)
-
             # Hacky way to set the global scope function
             for x in it.chain((model,), model.submodules):
                 setattr(x, '_global_scope', tf.name_scope(''))
             setattr(tf.keras.Model, 'global_scope', lambda self: self._global_scope)
             
-            # Signal and go
-            self.__ready.set()
-            # Select function
+            # Multi-steps function
+            _step_fn = train_fn if self.mode == Mode.TRAIN else test_fn
+            _number_of_steps = int(max(1, np.gcd.reduce(
+                list(
+                    it.chain([report_steps_upper_bound], (
+                        x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP) if x.mode == Mode.ANY or x.mode == self.mode
+                    ))
+                )
+            )))
             increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
 
-            # Enter writer context
+            logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
+
+            @tf.function
+            def run_multiple_steps(iterator):
+                for _ in tf.range(_number_of_steps - 1):
+                    with tf.name_scope(''):
+                        strategy.run(_step_fn, args=(next(iterator),))
+                
+                data = next(iterator)
+                result = strategy.run(_step_fn, args=(data,))
+                return data, result
+            
+            # Signal and go with writer context
+            self.__ready.set()
             with writer.as_default():
                 # Call now, before running
                 if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
