@@ -628,7 +628,7 @@ class ExperimentRun(object):
             metric.reset_states()
             logger.debug('\tMetric {} has been reset'.format(metric.name))
 
-    def _build(self, strategy, model, input_shape, input_type):
+    def _build(self, strategy, optimizer, model, input_shape, input_type):
         valid_types = (tuple, list, dict)
         if not isinstance(input_shape, valid_types):
             raise ValueError('Specified input shape is not one of the valid types. '
@@ -656,7 +656,16 @@ class ExperimentRun(object):
             else:
                 x = tf.zeros(shape=input_shape, dtype=input_type)
 
-            strategy.run(model.call, args=(x, False, -1))
+            def call(x):
+                model.call(x, training=False, step=-1)
+
+                # TODO(gpascualg): This is too much of a hack
+                with tf.name_scope(optimizer._name):
+                    # Create iteration if necessary.
+                    with tf.init_scope():
+                        optimizer._create_all_weights(model.trainable_variables)
+
+            strategy.run(call, args=(x,))
 
     def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
         summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, 
@@ -778,7 +787,7 @@ class ExperimentRun(object):
                 assert input_shape is not None and input_type is not None, "Using one of 'post_initialize_fn', 'Hookpoint.POST_INITIALIZATION' or 'reset_metrics_at_epoch_start' requires to submit an 'input_shape' and 'input_type'"
 
                 # Build model
-                self._build(strategy, model, input_shape, input_type)
+                self._build(strategy, optimizer, model, input_shape, input_type)
 
                 # Assert loaded
                 if postponed_assert is not None:
