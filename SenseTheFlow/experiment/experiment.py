@@ -696,7 +696,7 @@ class ExperimentRun(object):
             else:
                 x = tf.zeros(shape=input_shape, dtype=input_type)
 
-            def call(x):
+            def call_with_optimizer(x):
                 model.call(x, training=False, step=-1)
 
                 # TODO(gpascualg): This is too much of a hack
@@ -705,7 +705,13 @@ class ExperimentRun(object):
                     with tf.init_scope():
                         optimizer._create_all_weights(model.trainable_variables)
 
-            strategy.run(call, args=(x,))
+            def call_no_optimizer(x):
+                model.call(x, training=False, step=-1)
+
+            if optimizer is None:
+                strategy.run(call_no_optimizer, args=(x,))
+            else:
+                strategy.run(call_with_optimizer, args=(x,))
 
     def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
         report_steps_upper_bound=1000, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, 
@@ -783,10 +789,11 @@ class ExperimentRun(object):
                 return model(data, training=False, step=stf.step)
 
             # Checkpoint manager
-            if optimizer is not None:
+            if self.mode == Mode.TRAIN:
+                assert optimizer is not None, "Optimizer must be used in Mode.TRAIN"
                 ckpt = tf.train.Checkpoint(stf=stf, optimizer=optimizer, net=model)
             else:
-                assert self.mode != Mode.TRAIN, "Optimizer must be used in Mode.TRAIN"
+                optimizer = None
                 ckpt = tf.train.Checkpoint(stf=stf, net=model)
 
             manager = tf.train.CheckpointManager(ckpt, model_dir, max_to_keep=3)
