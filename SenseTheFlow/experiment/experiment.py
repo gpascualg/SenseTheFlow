@@ -26,7 +26,7 @@ from .mode import Mode, Hookpoint
 
 logger = logging.getLogger('SenseTheFlow')
 ch = logging.StreamHandler()
-ch.setLevel(level=logging.INFO)
+ch.setLevel(level=logging.DEBUG)
 formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
@@ -590,7 +590,8 @@ class ExperimentRun(object):
 
     def __reset_steps_bar(self, description, amount=1):
         if self.use_bars:
-            self.__steps_bar.reset(amount)
+            self.__steps_bar.close()
+            self.__steps_bar = bar(ncols='100%', initial=amount)
             self.__steps_bar.set_description(description)
 
     def __update_steps_bar(self, description, amount=1):
@@ -600,7 +601,8 @@ class ExperimentRun(object):
 
     def __reset_epochs_bar(self, amount=1):
         if self.use_bars:
-            self.__epochs_bar.reset(amount)
+            self.__epochs_bar.close()
+            self.__epochs_bar = bar(ncols='100%', initial=amount)
 
     def __update_epochs_bar(self, amount=1):
         if self.use_bars:
