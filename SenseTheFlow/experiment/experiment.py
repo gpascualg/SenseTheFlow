@@ -9,6 +9,11 @@ import semantic_version as sv
 import itertools as it
 import logging
 
+# Internal tensorflow imports
+from tensorflow.python.framework.func_graph import FuncGraph
+from tensorflow.python.keras.backend import get_graph
+from tensorflow.python.eager import context
+
 from threading import Thread, Event, Lock, Condition
 from concurrent.futures import ThreadPoolExecutor
 
@@ -631,10 +636,10 @@ class ExperimentRun(object):
                             'list of input shapes. User provided '
                             'input type: {}'.format(type(input_shape)))
 
-        if tf.executing_eagerly():
-            graph = tf.Graph('build_graph')
+        if context.executing_eagerly():
+            graph = FuncGraph('build_graph')
         else:
-            graph = tf.compat.v1.get_default_graph()
+            graph = get_graph()
 
         with graph.as_default():
             if (isinstance(input_shape, list) and
