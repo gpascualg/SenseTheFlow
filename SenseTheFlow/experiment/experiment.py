@@ -745,19 +745,18 @@ class ExperimentRun(object):
                 if postponed_assert is not None:
                     postponed_assert()
                     postponed_assert = None
-                    # Reset the assert, as we have already done it
 
-                # Post initialize hooks (must have been initialized by now)
-                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+            # Post initialize hooks (must have been initialized by now)
+            post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
 
-                # Execute hooks, if any
-                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                    if hook.ready(self.__step, self.mode):
-                        hook(self.experiment, self.__step, None, None, model)
+            # Execute hooks, if any
+            for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                if hook.ready(self.__step, self.mode):
+                    hook(self.experiment, self.__step, None, None, model)
 
-                # First epoch reset
-                if reset_metrics_at_epoch_start:
-                    self.reset_metrics(model)
+            # First epoch reset
+            if reset_metrics_at_epoch_start:
+                self.reset_metrics(model)
 
             # Create a writer, even if we don't end up using it
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
