@@ -26,8 +26,8 @@ from .mode import Mode, Hookpoint
 
 logger = logging.getLogger('SenseTheFlow')
 ch = logging.StreamHandler()
-ch.setLevel(level=logging.DEBUG)
-formatter = logging.Formatter('%(name)s:%(levelname)s: %(message)s')
+ch.setLevel(level=logging.INFO)
+formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
@@ -569,8 +569,7 @@ class ExperimentRun(object):
             self.__steps_bar.close()
         
             # Create new bar
-            self.__steps_bar = bar(ncols='100%')
-            self.__steps_bar.update(self.__step)
+            self.__steps_bar = bar(ncols='100%', initial=self.__step)
 
     def save(self, block=True):
         assert self.__checkpoint_hook is not None, "First run the experiment"
