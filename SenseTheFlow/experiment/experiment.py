@@ -647,14 +647,14 @@ class ExperimentRun(object):
                 input_shape = tuple(input_shape)
             
             if isinstance(input_shape, list):
-                x = [tf.keras.backend.placeholder(shape=shape, dtype=dtype) for shape, dtype in zip(input_shape, input_type)]
+                x = [tf.zeros(shape=shape, dtype=dtype) for shape, dtype in zip(input_shape, input_type)]
             elif isinstance(input_shape, dict):
                 x = {
-                    k: tf.keras.backend.placeholder(shape=shape, dtype=input_type[k])
+                    k: tf.zeros(shape=shape, dtype=input_type[k])
                     for k, shape in input_shape.items()
                 }
             else:
-                x = tf.keras.backend.placeholder(shape=input_shape, dtype=input_type)
+                x = tf.zeros(shape=input_shape, dtype=input_type)
 
             strategy.run(model.call, args=(x, False, -1))
 
@@ -775,8 +775,7 @@ class ExperimentRun(object):
             # If we have to load a model AND there is postponed information, reset metrics, eval on first, etc.
             needs_build = post_initialize_fn is not None or self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION) or reset_metrics_at_epoch_start
             if postponed_assert is not None and needs_build:
-                if input_shape is None:
-                    assert False, "Using one of 'post_initialize_fn', 'Hookpoint.POST_INITIALIZATION' or 'reset_metrics_at_epoch_start' requires to submit an 'input_shape'"
+                assert input_shape is not None and input_type is not None, "Using one of 'post_initialize_fn', 'Hookpoint.POST_INITIALIZATION' or 'reset_metrics_at_epoch_start' requires to submit an 'input_shape' and 'input_type'"
 
                 # Build model
                 self._build(strategy, model, input_shape, input_type)
