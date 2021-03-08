@@ -7,6 +7,7 @@ import numpy as np
 import traceback as tb
 import semantic_version as sv
 import itertools as it
+import logging
 
 from threading import Thread, Event, Lock, Condition
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +17,9 @@ from ..helper import DefaultNamespace, cmd_args
 from .data import DataType, FetchMethod, UriType
 from .utils import discover
 from .mode import Mode, Hookpoint
+
+
+logger = logging.getLogger('SenseTheFlow')
 
                     
 def default_config(soft_device_placement=True, log_device_placement=False):
@@ -29,7 +33,7 @@ def default_config(soft_device_placement=True, log_device_placement=False):
             tf.config.experimental.set_memory_growth(gpu, True)
 
         logical_gpus = tf.config.list_logical_devices('GPU')
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        logger.info('%d Physical GPUs, %d Logical GPUs', len(gpus), len(logical_gpus))
     else:
         raise NotImplementedError("No GPUs found")
 
@@ -55,7 +59,7 @@ class Experiment(object):
 
         # Issue a warning if no parameters are set
         if not params:
-            print("[WARNING] Defaulting to empty {} parameters", file=sys.stderr)
+            logger.critical("[WARNING] Defaulting to empty parameters", file=sys.stderr)
 
         # Private variables
         self.__model_cls = model_cls
@@ -105,7 +109,7 @@ class Experiment(object):
         for hk in self.__hooks[hookpoint]:
             if hk.name == hook.name and hk.mode == hook.mode:
                 if not silent:
-                    print(f'A hook with the name \'{hk.name}\' and mode \'{hk.mode}\' already exists in \'{hookpoint}\'')
+                    logger.critical(f'A hook with the name \'{hk.name}\' and mode \'{hk.mode}\' already exists in \'{hookpoint}\'')
                 return
         
         if prepend:
@@ -300,36 +304,36 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=False, use_bars=True, leave_bars=True):
+    def train(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
+    def eval(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
-            print("[WARNING] Evaluating a non-trained model", file=sys.stderr)
+            logger.critical("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, sync=False, use_bars=True, leave_bars=True):
+    def test(self, dataset_fn, optimizer=None, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
-            print("[WARNING] Testing a non-trained model", file=sys.stderr)
+            logger.critical("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, config=config, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
-            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, sync=sync)
+            summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -398,7 +402,7 @@ class ExperimentHook(object):
         # We can't have exceptions interrumpting the whole process
         except Exception as e:
             self.__skip_after_error = True
-            print('Error on hook {}/{} -> Disabling hook'.format(self.name, self.mode), file=sys.stderr)
+            logger.critical('Error on hook {}/{} -> Disabling hook'.format(self.name, self.mode), file=sys.stderr)
             tb.print_exc()
         finally:
             self.__ready.set()
@@ -544,7 +548,7 @@ class ExperimentRun(object):
 
     def __save(self, experiment, step, inputs, outputs, model, manager):
         save_path = manager.save()
-        print("Saved checkpoint for step {}: {}".format(step, save_path))
+        logger.info("Saved checkpoint for step {}: {}".format(step, save_path))
         experiment._on_saved()
 
     def stop(self):
@@ -591,12 +595,12 @@ class ExperimentRun(object):
       
     def reset_metrics(self, model):
       with tf.device('/cpu:0'):
-        print('Resetting metrics in mode {}'.format(self.mode.value))
+        logger.info('Resetting metrics in mode {}'.format(self.mode.value))
         for metric in model.metrics:
             metric.reset_states()
-            print('\tMetric {} has been reset'.format(metric.name))
+            logger.debug('\tMetric {} has been reset'.format(metric.name))
 
-    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, sync=None):
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, config=None, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, sync=None):
         # Failsafe
         model = None
 
@@ -649,7 +653,9 @@ class ExperimentRun(object):
             upper_bound = 100
             _number_of_steps = int(np.gcd.reduce(
                 list(
-                    it.chain([summary_steps or upper_bound, checkpoint_steps or upper_bound], (x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP)))
+                    it.chain([summary_steps or upper_bound, checkpoint_steps or upper_bound], (
+                        x.steps() for x in self.experiment.get_hooks(Hookpoint.LOOP) if x.mode == Mode.ANY or x.mode == self.mode
+                    ))
                 )
             ))
 
@@ -657,7 +663,7 @@ class ExperimentRun(object):
             # if self.mode != Mode.TRAIN:
             #     _number_of_steps = 1
 
-            print('Will run for {} steps at a time'.format(_number_of_steps))
+            logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
 
             @tf.function
             def run_multiple_steps(iterator):
@@ -700,11 +706,38 @@ class ExperimentRun(object):
                 epoch = int(strategy.experimental_local_results(stf.epoch)[0])
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
-                print(message)
+                logger.info(message)
                 self.__update_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
                 self.__update_epochs_bar(epoch)
             else:
-                print("Initializing from scratch.")
+                logger.info("Initializing from scratch: %s", model_dir)
+
+            # If we have to load a model AND there is postponed information, reset metrics, eval on first, etc.
+            needs_build = post_initialize_fn is not None or self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION) or reset_metrics_at_epoch_start
+            if postponed_assert is not None and needs_build:
+                if input_shape is None:
+                    assert False, "Using one of 'post_initialize_fn', 'Hookpoint.POST_INITIALIZATION' or 'reset_metrics_at_epoch_start' requires to submit an 'input_shape'"
+
+                # Build model
+                model.build(input_shape)
+
+                # Assert loaded
+                if postponed_assert is not None:
+                    postponed_assert()
+                    postponed_assert = None
+                    # Reset the assert, as we have already done it
+
+                # Post initialize hooks (must have been initialized by now)
+                post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
+
+                # Execute hooks, if any
+                for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
+                    if hook.ready(self.__step, self.mode):
+                        hook(self.experiment, self.__step, None, None, model)
+
+                # First epoch reset
+                if reset_metrics_at_epoch_start:
+                    self.reset_metrics(model)
 
             # Create a writer, even if we don't end up using it
             writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
@@ -721,7 +754,7 @@ class ExperimentRun(object):
                     summary_hook = ExperimentHook('summary', summary_steps, with_writer, concurrent=False, mode=self.mode)
                     self.experiment.add_hook(Hookpoint.LOOP, summary_hook, silent=True)
                 else:
-                    print('Summary is enabled but the model does not have an on_summary function')
+                    logger.critical('Summary is enabled but the model does not have an on_summary function')
 
             if checkpoint_steps:
                 self.__checkpoint_hook = ExperimentHook('checkpoint', checkpoint_steps, self.__save, concurrent=False, mode=self.mode)
@@ -743,27 +776,10 @@ class ExperimentRun(object):
 
             # Enter writer context
             with writer.as_default():
-                # I'm not convinced this is working
-                with tf.init_scope():
-                    # Assert loaded
-                    if postponed_assert is not None:
-                        postponed_assert()
-
-                    # Post initialize hooks (must have been initialized by now)
-                    post_initialize_fn and post_initialize_fn(self.experiment, model, self.mode, manager.latest_checkpoint)
-
-                    # Execute hooks, if any
-                    for hook in self.experiment.get_hooks(Hookpoint.POST_INITIALIZATION):
-                        if hook.ready(self.__step, self.mode):
-                            hook(self.experiment, self.__step, None, None, model)
-
-                    # First epoch reset
-                    if reset_metrics_at_epoch_start:
-                        self.reset_metrics(model)
-
-                        if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
-                            model.on_epoch(stf.step)
-                            writer.flush()
+                # Call now, before running
+                if call_on_epoch_before_run and hasattr(model, 'on_epoch') and callable(model.on_epoch):
+                    model.on_epoch(stf.step)
+                    writer.flush()
 
                 # Run it all
                 for self.epoch in range(epochs):
@@ -781,7 +797,12 @@ class ExperimentRun(object):
                         except (tf.errors.OutOfRangeError, GeneratorExit):
                             # No more data
                             break
-            
+                        
+                        # Assert loaded in case we didn't do it before
+                        if postponed_assert is not None:
+                            postponed_assert()
+                            postponed_assert = None
+                            
                         # Increment step now
                         step_tensors = stf.step.assign_add(increment_amount)
                         self.__step = int(strategy.experimental_local_results(step_tensors)[0])
@@ -817,45 +838,3 @@ class ExperimentRun(object):
                         hook(self.experiment, self.__step, None, None, model, manager)
 
         return model
-
-def keras_weight_path(model_name, include_top=False):
-    BASE_WEIGHTS_PATH = (
-    'https://storage.googleapis.com/tensorflow/keras-applications/resnet/')
-
-    WEIGHTS_HASHES = {
-        'resnet50': ('2cb95161c43110f7111970584f804107',
-                     '4d473c1dd8becc155b73f8504c6f6626'),
-        'resnet101': ('f1aeb4b969a6efcfb50fad2f0c20cfc5',
-                      '88cf7a10940856eca736dc7b7e228a21'),
-        'resnet152': ('100835be76be38e30d865e96f2aaae62',
-                      'ee4c566cf9a93f14d82f913c2dc6dd0c'),
-        'resnet50v2': ('3ef43a0b657b3be2300d5770ece849e0',
-                       'fac2f116257151a9d068a22e544a4917'),
-        'resnet101v2': ('6343647c601c52e1368623803854d971',
-                        'c0ed64b8031c3730f411d2eb4eea35b5'),
-        'resnet152v2': ('a49b44d1979771252814e80f8ec446f9',
-                        'ed17cf2e0169df9d443503ef94b23b33'),
-        'resnext50': ('67a5b30d522ed92f75a1f16eef299d1a',
-                      '62527c363bdd9ec598bed41947b379fc'),
-        'resnext101':
-            ('34fb605428fcc7aa4d62f44404c11509', '0f678c91647380debd923963594981b3')
-    }
-
-    if include_top:
-        file_name = model_name + '_weights_tf_dim_ordering_tf_kernels.h5'
-        file_hash = WEIGHTS_HASHES[model_name][0]
-    else:
-        file_name = model_name + '_weights_tf_dim_ordering_tf_kernels_notop.h5'
-        file_hash = WEIGHTS_HASHES[model_name][1]
-
-    weights_path = tf.keras.utils.get_file(
-        file_name,
-        BASE_WEIGHTS_PATH + file_name,
-        cache_subdir='models',
-        file_hash=file_hash)
-
-    return weights_path
-
-def keras_weight_loader(module, model, include_top, weights='imagenet', by_name=False):
-    model.load_weights(keras_weight_path(module, include_top, weights), by_name=by_name)
-
