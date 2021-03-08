@@ -25,6 +25,12 @@ from .mode import Mode, Hookpoint
 
 
 logger = logging.getLogger('SenseTheFlow')
+ch = logging.StreamHandler()
+ch.setLevel(level=logging.DEBUG)
+formatter = logging.Formatter('%(name)s:%(levelname)s: %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
 default_optimizer_config = tf.config.optimizer.get_experimental_options()
 
                     
@@ -583,10 +589,19 @@ class ExperimentRun(object):
         with self.__run_lock:
             self.__stop = True
 
+    def __reset_steps_bar(self, description, amount=1):
+        if self.use_bars:
+            self.__steps_bar.reset(amount)
+            self.__steps_bar.set_description(description)
+
     def __update_steps_bar(self, description, amount=1):
         if self.use_bars:
             self.__steps_bar.set_description(description)
             self.__steps_bar.update(amount)
+
+    def __reset_epochs_bar(self, amount=1):
+        if self.use_bars:
+            self.__epochs_bar.reset(amount)
 
     def __update_epochs_bar(self, amount=1):
         if self.use_bars:
@@ -776,8 +791,8 @@ class ExperimentRun(object):
 
                 message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
                 logger.info(message)
-                self.__update_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
-                self.__update_epochs_bar(epoch)
+                self.__reset_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
+                self.__reset_epochs_bar(epoch)
             else:
                 logger.info("Initializing from scratch: %s", model_dir)
 
