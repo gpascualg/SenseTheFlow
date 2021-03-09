@@ -13,6 +13,7 @@ import logging
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.keras.backend import get_graph
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors_impl
 
 from threading import Thread, Event, Lock, Condition
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +23,9 @@ from ..helper import DefaultNamespace, cmd_args
 from .data import DataType, FetchMethod, UriType
 from .utils import discover
 from .mode import Mode, Hookpoint
+
+
+STARS_SEP = '**********************************'
 
 
 logger = logging.getLogger('SenseTheFlow')
@@ -738,7 +742,14 @@ class ExperimentRun(object):
 
         # Setup execution strategy
         devices = self.experiment.get_devices()
-        strategy = tf.distribute.MirroredStrategy(devices)
+
+        # TODO(gpascualg): Is it worth doing this?
+        strategy_cls = tf.distribute.MirroredStrategy
+        if len(devices) == 1:
+            devices = devices[0]
+            strategy_cls = tf.distribute.OneDeviceStrategy
+
+        strategy = strategy_cls(devices)
 
         with strategy.scope():
             # Create model
@@ -922,15 +933,23 @@ class ExperimentRun(object):
                         except (tf.errors.OutOfRangeError, GeneratorExit, StopIteration):
                             # No more data
                             break
-                        except tf.errors.ResourceExhaustedError:
-                            logger.critical('**********************************')
-                            logger.critical('**********************************')
+                        except (errors_impl.ResourceExhaustedError, tf.errors.ResourceExhaustedError):
+                            logger.critical(STARS_SEP)
+                            logger.critical(STARS_SEP)
                             logger.critical('Your network, in mode %s, has ran out of memory (OOM: tf.errors.ResourceExhaustedError)', self.mode.value)
-                            logger.critical('**********************************')
-                            logger.critical('**********************************')
+                            logger.critical(STARS_SEP)
+                            logger.critical(STARS_SEP)
+                            break
+                        except (errors_impl.InvalidArgumentError, tf.errors.InvalidArgumentError) as e:
+                            if 'Tried to expand dim index 1 for tensor with 0 dimensions' in e.message:
+                                logger.critical(STARS_SEP)
+                                logger.critical('Your batch size in mode %s is not evenly divided by the number of replicas', self.mode.value)
+                                logger.critical(STARS_SEP)
+                            
+                            tb.print_exc()
                             break
                         except Exception as e:
-                            logger.critical('Fatal error during execution in mode %s: %s', self.mode.value, str(e))
+                            logger.critical('Fatal error during execution in mode %s', self.mode.value)
                             tb.print_exc()
                             break
                         
