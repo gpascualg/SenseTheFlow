@@ -947,7 +947,7 @@ class ExperimentRun(object):
                         loss_other = 0.0 if not model.losses else tf.add_n(model.losses)
                         loss_model = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
                         loss = (loss_other + loss_model) / strategy.num_replicas_in_sync
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), multisteps_count)
+                        self.__update_steps_bar('Loss/l2: {:.2f}/{:.2f}'.format(float(loss), float(loss_other)), multisteps_count)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
