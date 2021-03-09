@@ -732,6 +732,7 @@ class ExperimentRun(object):
             gradients_fn = lambda gradients, variables, step: zip(gradients, variables)
 
         if not self.experiment.has_devices():
+            self.__close_bars()
             logger.critical('No devices to execute in mode %s', self.mode.value)
             return None
 
