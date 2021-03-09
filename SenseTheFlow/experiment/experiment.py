@@ -160,9 +160,16 @@ class Experiment(object):
             self.eval(dataset_fn, None, input_shape=input_shape, input_type=input_type, leave_bars=False)
         
         try:
-            checkpoints_hook = next(x for x in self.get_hooks(Hookpoint.LOOP) if x.name in ('checkpoint', 'checkpoint-epoch'))
+            checkpoints_hook = next(x for x in self.get_hooks(Hookpoint.LOOP) if x.name == 'checkpoint')
+            hook = ExperimentHook('eval-every-ckpt', checkpoints_hook.steps(), _eval_fn, concurrent=True, mode=Mode.TRAIN)
+            self.add_hook(Hookpoint.LOOP, hook, silent=True)
         except Exception:
-            raise NotImplementedError('You must have called train with checkpoints')
+            try:
+                checkpoints_hook = next(x for x in self.get_hooks(Hookpoint.EPOCH) if x.name == 'checkpoint-epoch')
+                hook = ExperimentHook.always('eval-every-ckpt', _eval_fn, concurrent=True, mode=Mode.TRAIN)
+                self.add_hook(Hookpoint.EPOCH, hook, silent=True)
+            except Exception:
+                raise NotImplementedError('To setup \'eval_every_checkpoint\' you need to supply either \'checkpoint_steps\' or set \'checkpoint_on_epoch\'')
 
         hook = ExperimentHook('eval-every-ckpt', checkpoints_hook.steps(), _eval_fn, mode=Mode.TRAIN)
         self.add_hook(Hookpoint.LOOP, hook)
