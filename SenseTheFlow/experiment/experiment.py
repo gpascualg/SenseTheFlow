@@ -940,7 +940,7 @@ class ExperimentRun(object):
                             postponed_assert = None
                             
                         # Increment step now
-                        multisteps_count = int(strategy.experimental_local_results(stf.step)[0])
+                        multisteps_count = int(strategy.experimental_local_results(stf.step)[0]) - self.__step
                         self.__step += multisteps_count
 
                         # Update tqdm
