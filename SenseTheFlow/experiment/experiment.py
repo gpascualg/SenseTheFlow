@@ -276,10 +276,14 @@ class Experiment(object):
         if self.__on_stop:
             self.__on_stop(self)
 
-    def get_devices(self):
-        assert self.__devices, "There is no devices available"
-
+    def has_devices(self):
         with self.__devices_lock:
+            return bool(self.__devices)
+
+    def get_devices(self):
+        with self.__devices_lock:
+            assert self.__devices, "There is no devices available"
+
             devices = self.__devices.pop(0)
             for device in devices:
                 self.__devices_usage[device] += 1
@@ -290,11 +294,11 @@ class Experiment(object):
         if not isinstance(devices, (list, tuple)):
             devices = (devices,)
         
-        for device in devices:
-            assert device in self.__devices_usage, "Got an invalid device"
-            self.__devices_usage[device] -= 1
-
         with self.__devices_lock:
+            for device in devices:
+                assert device in self.__devices_usage, "Got an invalid device"
+                self.__devices_usage[device] -= 1
+
             self.__devices.append(devices)
 
     def get_persistant_path(self):
@@ -727,6 +731,10 @@ class ExperimentRun(object):
         if gradients_fn is None:
             gradients_fn = lambda gradients, variables, step: zip(gradients, variables)
 
+        if not self.experiment.has_devices():
+            logger.critical('No devices to execute in mode %s', self.mode.value)
+            return None
+
         # Setup execution strategy
         devices = self.experiment.get_devices()
         strategy = tf.distribute.MirroredStrategy(devices)
@@ -895,16 +903,26 @@ class ExperimentRun(object):
                     if self.__stop:
                         break
 
-                    # Reset any metrics
-                    if self.epoch > 0 and reset_metrics_at_epoch_start:
-                        self.reset_metrics(model)
+                    # Reset iterator and/or any metrics
+                    if self.epoch > 0:
+                        iterator = iter(dataset)
+                        
+                        if reset_metrics_at_epoch_start:
+                            self.reset_metrics(model)
                     
+                    # Iterate all steps
                     while True:
                         # Do the actual iter
                         try:
                             data, outputs = run_multiple_steps(iterator)
-                        except (tf.errors.OutOfRangeError, GeneratorExit):
+                        except (tf.errors.OutOfRangeError, GeneratorExit, StopIteration):
                             # No more data
+                            break
+                        except tf.errors.ResourceExhaustedError:
+                            logger.critical('**********************************')
+                            logger.critical('Your network, in mode %s, has ran out of memory (OOM: tf.errors.ResourceExhaustedError)', self.mode.value)
+                            logger.critical('**********************************')
+                            logger.critical('Exiting current session')
                             break
                         except Exception as e:
                             logger.critical('Fatal error during execution in mode %s: %s', self.mode.value, str(e))
