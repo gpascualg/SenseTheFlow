@@ -881,11 +881,13 @@ class ExperimentRun(object):
 
             @tf.function
             def run_multiple_steps(iterator):
+                # Do N-1 consecutive steps
                 for _ in tf.range(number_of_steps - 1):
                     with tf.name_scope(''):
                         strategy.run(_step_fn, args=(next(iterator),))
                         stf.step.assign_add(increment_count)
                 
+                # One last step where we keep data and result
                 data = next(iterator)
                 result = strategy.run(_step_fn, args=(data,))
                 stf.step.assign_add(increment_count)
@@ -942,11 +944,11 @@ class ExperimentRun(object):
                         self.__step += multisteps_count
 
                         # Update tqdm
-                        loss = 0.0 if not model.losses else tf.add_n(model.losses)
-                        loss = (loss + outputs['loss']) / strategy.num_replicas_in_sync
-                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, loss, axis=None)
+                        loss_other = 0.0 if not model.losses else tf.add_n(model.losses)
+                        loss_model = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
+                        loss = (loss_other + loss_model) / strategy.num_replicas_in_sync
                         self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), multisteps_count)
-                        
+
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
                             if hook.ready(self.__step, self.mode):
