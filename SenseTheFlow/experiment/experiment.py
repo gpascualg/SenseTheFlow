@@ -584,7 +584,7 @@ class ExperimentRun(object):
             self.__steps_bar = bar(leave=leave_bars, ncols='100%')
         
         # To allow execution re-attaching
-        self.__step = -1
+        self.__step = 0
         self.__stop = False
 
         # Trigger hook right now
