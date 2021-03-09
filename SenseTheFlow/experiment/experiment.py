@@ -859,10 +859,6 @@ class ExperimentRun(object):
                 if hook.ready(self.__step, self.mode):
                     hook(self.experiment, self.__step, None, None, model)
 
-            # First epoch reset
-            if reset_metrics_at_epoch_start:
-                self.reset_metrics(model)
-
             # Hacky way to set the global scope function
             for x in it.chain((model,), model.submodules):
                 setattr(x, '_global_scope', tf.name_scope(''))
@@ -877,18 +873,22 @@ class ExperimentRun(object):
                     ))
                 )
             )))
-            increment_amount = _number_of_steps if self.mode == Mode.TRAIN else 0
+
+            number_of_steps = tf.constant(_number_of_steps, dtype=tf.int32)
+            increment_count = tf.constant(1 if self.mode == Mode.TRAIN else 0, dtype=tf.int64)
 
             logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
 
             @tf.function
             def run_multiple_steps(iterator):
-                for _ in tf.range(_number_of_steps - 1):
+                for _ in tf.range(number_of_steps - 1):
                     with tf.name_scope(''):
                         strategy.run(_step_fn, args=(next(iterator),))
+                        stf.step.assign_add(increment_count)
                 
                 data = next(iterator)
                 result = strategy.run(_step_fn, args=(data,))
+                stf.step.assign_add(increment_count)
                 return data, result
             
             # Signal and go with writer context
@@ -904,12 +904,13 @@ class ExperimentRun(object):
                     if self.__stop:
                         break
 
-                    # Reset iterator and/or any metrics
+                    # Reset iterator on second+ epochs
                     if self.epoch > 0:
                         iterator = iter(dataset)
-                        
-                        if reset_metrics_at_epoch_start:
-                            self.reset_metrics(model)
+                    
+                    # Reset metrics
+                    if reset_metrics_at_epoch_start:
+                        self.reset_metrics(model)
                     
                     # Iterate all steps
                     while True:
@@ -921,9 +922,10 @@ class ExperimentRun(object):
                             break
                         except tf.errors.ResourceExhaustedError:
                             logger.critical('**********************************')
+                            logger.critical('**********************************')
                             logger.critical('Your network, in mode %s, has ran out of memory (OOM: tf.errors.ResourceExhaustedError)', self.mode.value)
                             logger.critical('**********************************')
-                            logger.critical('Exiting current session')
+                            logger.critical('**********************************')
                             break
                         except Exception as e:
                             logger.critical('Fatal error during execution in mode %s: %s', self.mode.value, str(e))
@@ -936,13 +938,15 @@ class ExperimentRun(object):
                             postponed_assert = None
                             
                         # Increment step now
-                        step_tensors = stf.step.assign_add(increment_amount)
-                        self.__step = int(strategy.experimental_local_results(step_tensors)[0])
+                        multisteps_count = int(strategy.experimental_local_results(stf.step)[0])
+                        self.__step += multisteps_count
 
                         # Update tqdm
-                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
-                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), increment_amount)
-                    
+                        loss = 0.0 if not model.losses else tf.add_n(model.losses)
+                        loss = (loss + outputs['loss']) / strategy.num_replicas_in_sync
+                        loss = strategy.reduce(tf.distribute.ReduceOp.SUM, loss, axis=None)
+                        self.__update_steps_bar('Loss: {:.2f}'.format(float(loss)), multisteps_count)
+                        
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
                             if hook.ready(self.__step, self.mode):
