@@ -124,6 +124,7 @@ class Experiment(object):
 
         # Async execution contexts
         self.__contexts = {mode: [] for mode in Mode}
+        self.__contexts_lock = Lock()
 
         # Concurrent hook execution
         self.__pool = ThreadPoolExecutor(max_workers=max_concurrent_hooks)
@@ -195,33 +196,54 @@ class Experiment(object):
         if not isinstance(context, AsyncExecution):
             return
 
-        if context in self.__contexts[mode]:
+        with self.__contexts_lock:
+            if context in self.__contexts[mode]:
+                return
+
+            self.__contexts[mode].append(context)
+
+    def _remove_async_context(self, mode, context):
+        if not isinstance(context, AsyncExecution):
             return
 
-        self.__contexts[mode].append(context)
+        with self.__contexts_lock:
+            if context not in self.__contexts[mode]:
+                return
 
+            self.__contexts[mode].remove(context)
+    
     def get_context(self, mode):
-        return self.__contexts[mode]
+        with self.__contexts_lock:
+            return copy.copy(self.__contexts[mode])
 
     def wait_ready(self):
         self.__done_loading.wait()
         
         for mode in Mode:
-            for context in self.__contexts[mode]:
+            with self.__contexts_lock:
+                contexts = copy.copy(self.__contexts[mode])
+            
+            for context in contexts:
                 context.wait_ready()
 
     def wait_all(self):
         self.__done_loading.wait()
         
         for mode in Mode:
-            for context in self.__contexts[mode]:
+            with self.__contexts_lock:
+                contexts = copy.copy(self.__contexts[mode])
+
+            for context in contexts:
                 context.wait()
 
     def show_progress(self):
         self.wait_ready()
 
         for mode in Mode:
-            for context in self.__contexts[mode]:
+            with self.__contexts_lock:
+                contexts = copy.copy(self.__contexts[mode])
+
+            for context in contexts:
                 context.reattach()
 
     def set_remote_execution(self):
@@ -525,6 +547,7 @@ class AsyncExecution(object):
 
     def _run(self, *args, **kwargs):
         self.__model = self.__experiment_run._run(*args, **kwargs)
+        self.experiment._remove_async_context(self.__experiment_run.mode, self)
         
     def wait(self):
         try:
