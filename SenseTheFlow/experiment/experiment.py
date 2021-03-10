@@ -709,7 +709,7 @@ class ExperimentRun(object):
                 x = tf.zeros(shape=input_shape, dtype=input_type)
 
             def call_with_optimizer(x):
-                model.call(x, training=False, step=-1)
+                model.call(x, training=self.mode == Mode.TRAIN, step=-1)
 
                 # TODO(gpascualg): This is too much of a hack
                 with tf.name_scope(optimizer._name):
@@ -718,7 +718,7 @@ class ExperimentRun(object):
                         optimizer._create_all_weights(model.trainable_variables)
 
             def call_no_optimizer(x):
-                model.call(x, training=False, step=-1)
+                model.call(x, training=self.mode == Mode.TRAIN, step=-1)
 
             if optimizer is None:
                 strategy.run(call_no_optimizer, args=(x,))
@@ -937,6 +937,7 @@ class ExperimentRun(object):
                             logger.critical(STARS_SEP)
                             logger.critical(STARS_SEP)
                             logger.critical('Your network, in mode %s, has ran out of memory (OOM: tf.errors.ResourceExhaustedError)', self.mode.value)
+                            logger.critical('Expect any other network running in device(s) %s to fail/crash/hang', str(devices))
                             logger.critical(STARS_SEP)
                             logger.critical(STARS_SEP)
                             break
