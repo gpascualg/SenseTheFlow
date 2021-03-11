@@ -1,5 +1,6 @@
 import tempfile
 import os
+import gc
 import copy
 import sys
 import tensorflow as tf
@@ -390,18 +391,21 @@ class Experiment(object):
         return self.__model_cls(mode, self.params)
 
     def train(self, dataset_fn, optimizer, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
-             summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
+             summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, 
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, 
-            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, input_type=input_type, sync=sync)
+            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
     def eval(self, dataset_fn, optimizer=None, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
-             summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
+             summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -410,12 +414,14 @@ class Experiment(object):
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
-            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, input_type=input_type, sync=sync)
+            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
     def test(self, dataset_fn, optimizer=None, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
-             summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, input_shape=None, input_type=False, sync=False, use_bars=True, leave_bars=True):
+             summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -424,7 +430,8 @@ class Experiment(object):
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
-            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, input_type=input_type, sync=sync)
+            reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -548,6 +555,7 @@ class AsyncExecution(object):
     def _run(self, *args, **kwargs):
         self.__model = self.__experiment_run._run(*args, **kwargs)
         self.experiment._remove_async_context(self.__experiment_run.mode, self)
+        gc.collect() # Force garbage collection of all TF objects
         
     def wait(self):
         try:
@@ -750,7 +758,7 @@ class ExperimentRun(object):
 
     def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
         report_steps_upper_bound=1000, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, 
-        call_on_epoch_before_run=True, input_shape=None, input_type=None, sync=None):
+        call_on_epoch_before_run=True, input_shape=None, input_type=None, raise_on_error=False, sync=None):
         # Failsafe
         model = None
 
@@ -954,27 +962,45 @@ class ExperimentRun(object):
                         try:
                             data, outputs = run_multiple_steps(iterator)
                         except (tf.errors.OutOfRangeError, GeneratorExit, StopIteration):
-                            # No more data
+                            # No more data, simply exit
                             break
-                        except (errors_impl.ResourceExhaustedError, tf.errors.ResourceExhaustedError):
+                        except (errors_impl.ResourceExhaustedError, tf.errors.ResourceExhaustedError) as e:
                             logger.critical(STARS_SEP)
                             logger.critical(STARS_SEP)
                             logger.critical('Your network, in mode %s, has ran out of memory (OOM: tf.errors.ResourceExhaustedError)', self.mode.value)
                             logger.critical('Expect any other network running in device(s) %s to fail/crash/hang', str(devices))
                             logger.critical(STARS_SEP)
                             logger.critical(STARS_SEP)
+                            
+                            if raise_on_error:
+                                raise e
+
+                            self.__stop = True
                             break
                         except (errors_impl.InvalidArgumentError, tf.errors.InvalidArgumentError) as e:
                             if 'Tried to expand dim index 1 for tensor with 0 dimensions' in e.message:
                                 logger.critical(STARS_SEP)
                                 logger.critical('Your batch size in mode %s is not evenly divided by the number of replicas', self.mode.value)
+                                logger.critical('It will not raise error, but the execution will stop')
                                 logger.critical(STARS_SEP)
-                            
+
+                                self.__stop = True
+                                break
+
+                            if raise_on_error:
+                                raise e
+
                             tb.print_exc()
+                            self.__stop = True
                             break
                         except Exception as e:
                             logger.critical('Fatal error during execution in mode %s', self.mode.value)
+                            
+                            if raise_on_error:
+                                raise e
+
                             tb.print_exc()
+                            self.__stop = True
                             break
                         
                         # Assert loaded in case we didn't do it before
