@@ -921,6 +921,11 @@ class ExperimentRun(object):
 
             logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
 
+            remainder = self.__step % _number_of_steps
+            if remainder != 0:
+                logger.critical('Current step %d is not multiple of %d, fixing', self.__step, _number_of_steps)
+                self.__step -= self.__step % _number_of_steps
+
             @tf.function
             def run_multiple_steps(iterator):
                 # Do N-1 consecutive steps
