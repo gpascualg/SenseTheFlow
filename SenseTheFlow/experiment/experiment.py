@@ -1020,7 +1020,7 @@ class ExperimentRun(object):
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
                             if hook.ready(self.__step, self.mode):
-                                hook(self.experiment, self.__step, data, outputs, model, manager)
+                                hook(self.experiment, stf.step, data, outputs, model, manager)
 
                         if self.__stop:
                             break
@@ -1041,6 +1041,6 @@ class ExperimentRun(object):
                 # Execute hooks, if any
                 for hook in self.experiment.get_hooks(Hookpoint.EPOCH):
                     if hook.ready(self.__step, self.mode):
-                        hook(self.experiment, self.__step, None, None, model, manager)
+                        hook(self.experiment, stf.step, None, None, model, manager)
 
         return model
