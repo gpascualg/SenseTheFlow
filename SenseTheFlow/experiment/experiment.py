@@ -870,13 +870,13 @@ class ExperimentRun(object):
                 else:
                     postponed_assert = restore_information.assert_existing_objects_matched
 
-                self.__step = int(strategy.experimental_local_results(stf.step)[0])
-                epoch = int(strategy.experimental_local_results(stf.epoch)[0])
+                restored_step = int(strategy.experimental_local_results(stf.step)[0])
+                restored_epoch = int(strategy.experimental_local_results(stf.epoch)[0])
 
-                message = "Restored iter {} from {}".format(self.__step, manager.latest_checkpoint)
+                message = "Restored iter {} from {}".format(restored_step, manager.latest_checkpoint)
                 logger.info(message)
-                self.__reset_epochs_bar(epoch)
-                self.__reset_steps_bar("Restored iter {} from {}".format(self.__step, manager.latest_checkpoint), self.__step)
+                self.__reset_epochs_bar(restored_epoch)
+                self.__reset_steps_bar("Restored iter {} from {}".format(restored_step, manager.latest_checkpoint), restored_step)
             else:
                 logger.info("Initializing from scratch: %s", model_dir)
 
@@ -920,11 +920,6 @@ class ExperimentRun(object):
             increment_count = tf.constant(1 if self.mode == Mode.TRAIN else 0, dtype=tf.int64)
 
             logger.debug('Will run for {} steps at a time'.format(_number_of_steps))
-
-            remainder = self.__step % _number_of_steps
-            if remainder != 0:
-                logger.critical('Current step %d is not multiple of %d, fixing', self.__step, _number_of_steps)
-                self.__step -= self.__step % _number_of_steps
 
             @tf.function
             def run_multiple_steps(iterator):
@@ -1013,15 +1008,14 @@ class ExperimentRun(object):
                             postponed_assert()
                             postponed_assert = None
                             
-                        # Increment step now
-                        multisteps_count = int(strategy.experimental_local_results(stf.step)[0]) - self.__step
-                        self.__step += multisteps_count
+                        # Increment step now, if we reach here it means we have done exactly _number_of_steps without raising
+                        self.__step += _number_of_steps
 
                         # Update tqdm
                         loss_other = 0.0 if not model.losses else tf.add_n(model.losses)
                         loss_model = strategy.reduce(tf.distribute.ReduceOp.SUM, outputs['loss'], axis=None)
                         loss = (loss_other + loss_model) / strategy.num_replicas_in_sync
-                        self.__update_steps_bar('Loss/l2: {:.2f}/{:.2f}'.format(float(loss), float(loss_other)), multisteps_count)
+                        self.__update_steps_bar('Loss/l2: {:.2f}/{:.2f}'.format(float(loss), float(loss_other)), _number_of_steps)
 
                         # User hooks
                         for hook in self.experiment.get_hooks(Hookpoint.LOOP):
