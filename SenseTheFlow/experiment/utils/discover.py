@@ -199,7 +199,7 @@ def _discover_jupyter(output: SelectionOutput, model_dir, model_name, prepend_ti
     select.index = None
     select.observe(on_change)
 
-def discover(experiment, model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False):
+def discover(experiment, model_dir, model_name, prepend_timestamp, append_timestamp, delete_existing=False, force_ascii=False, force_last=False, force_new=False):
     output = SelectionOutput()
     candidates = _get_candidate_models(model_dir, model_name)
     
@@ -214,6 +214,9 @@ def discover(experiment, model_dir, model_name, prepend_timestamp, append_timest
         )
         output.on_value((model, False))
         return output
+
+    if force_new:
+        raise RuntimeError('A model with this name already exists')
 
     if force_last:
         print("Forcing last model")

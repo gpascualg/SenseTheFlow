@@ -361,7 +361,7 @@ class Experiment(object):
 
         return model
       
-    def run_local(self, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False):
+    def run_local(self, prepend_timestamp=False, append_timestamp=False, force_ascii_discover=False, delete_existing=False, force_last=False, force_new=False):
         # Signal not ready
         self.__done_loading.clear()
         
@@ -372,7 +372,7 @@ class Experiment(object):
 
         # Discover models
         return discover.discover(self, model_dir, model_name, prepend_timestamp, append_timestamp, 
-            delete_existing, force_ascii_discover, force_last)
+            delete_existing, force_ascii_discover, force_last, force_new)
 
     def run_remote(self, on_run):
         self.__on_run = on_run
@@ -390,20 +390,20 @@ class Experiment(object):
         assert self.__model_cls is not None, "Model is not configured"
         return self.__model_cls(mode, self.params)
 
-    def train(self, dataset_fn, optimizer, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
+    def train(self, dataset_fn, optimizer, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, 
              input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
             input_type=input_type, raise_on_error=raise_on_error, sync=sync)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
-    def eval(self, dataset_fn, optimizer=None, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
+    def eval(self, dataset_fn, optimizer=None, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
              input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
@@ -412,14 +412,14 @@ class Experiment(object):
             logger.critical("[WARNING] Evaluating a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
             input_type=input_type, raise_on_error=raise_on_error, sync=sync)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
-    def test(self, dataset_fn, optimizer=None, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
+    def test(self, dataset_fn, optimizer=None, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
              input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
@@ -428,7 +428,7 @@ class Experiment(object):
             logger.critical("[WARNING] Testing a non-trained model", file=sys.stderr)
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
-        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
+        context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
             input_type=input_type, raise_on_error=raise_on_error, sync=sync)
@@ -756,7 +756,7 @@ class ExperimentRun(object):
             else:
                 strategy.run(call_with_optimizer, args=(x,))
 
-    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
+    def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
         report_steps_upper_bound=1000, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, 
         call_on_epoch_before_run=True, input_shape=None, input_type=None, raise_on_error=False, sync=None):
         # Failsafe
@@ -957,7 +957,7 @@ class ExperimentRun(object):
                         self.reset_metrics(model)
                     
                     # Iterate all steps
-                    while True:
+                    while self.__step < max_steps:
                         # Do the actual iter
                         try:
                             data, outputs = run_multiple_steps(iterator)
