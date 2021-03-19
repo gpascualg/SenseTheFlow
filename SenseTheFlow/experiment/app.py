@@ -16,5 +16,5 @@ def run(main=None, argv=None):
 
 def execute_battery(parameters_list, callback):
     for i, argument_set in enumerate(parameters_list):
-        run(lambda args: callback(i, args), argv=' '.join('--{}={}'.format(k, v) for k, v in argument_set.items()))
+        run(lambda args: callback(i, args), argv=[sys.argv[0]] + [f'--{k}={v}' for k, v in argument_set.items()])
 
