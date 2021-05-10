@@ -156,14 +156,14 @@ class Experiment(object):
 
     def eval_every_n(self, steps, dataset_fn, input_shape, input_type, name=None):
         def _eval_fn(*args, **kwargs):
-            self.eval(dataset_fn, None, input_shape=input_shape, input_type=input_type, leave_bars=False)
+            self.eval(dataset_fn, None, input_shape=input_shape, input_type=input_type, leave_bars=False, name=name)
         
         hook = ExperimentHook(name or 'eval-every-n', steps, _eval_fn, mode=Mode.TRAIN)
         self.add_hook(Hookpoint.LOOP, hook)
 
     def eval_every_checkpoint(self, dataset_fn, input_shape, input_type, concurrent=True, name=None):
         def _eval_fn(*args, **kwargs):
-            self.eval(dataset_fn, None, input_shape=input_shape, input_type=input_type, leave_bars=False)
+            self.eval(dataset_fn, None, input_shape=input_shape, input_type=input_type, leave_bars=False, name=name)
         
         try:
             checkpoints_hook = next(x for x in self.get_hooks(Hookpoint.LOOP) if x.name == 'checkpoint')
@@ -392,20 +392,20 @@ class Experiment(object):
 
     def train(self, dataset_fn, optimizer, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=True, 
-             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, name=None, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         run = ExperimentRun(self, Mode.TRAIN, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=checkpoint_steps, checkpoint_on_epoch=checkpoint_on_epoch, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
-            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync, name=name)
         self._add_async_context(Mode.TRAIN, context_or_none)
         return context_or_none
 
     def eval(self, dataset_fn, optimizer=None, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
-             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, name=None, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
@@ -415,13 +415,13 @@ class Experiment(object):
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
-            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync, name=name)
         self._add_async_context(Mode.EVAL, context_or_none)
         return context_or_none
 
     def test(self, dataset_fn, optimizer=None, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, report_steps_upper_bound=1000, 
              summary_steps=None, reset_metrics_at_epoch_start=True, call_on_epoch_before_run=False, 
-             input_shape=None, input_type=False, raise_on_error=False, sync=False, use_bars=True, leave_bars=True):
+             input_shape=None, input_type=False, raise_on_error=False, sync=False, name=None, use_bars=True, leave_bars=True):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
@@ -431,7 +431,7 @@ class Experiment(object):
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
             report_steps_upper_bound=report_steps_upper_bound, summary_steps=summary_steps, checkpoint_steps=None, checkpoint_on_epoch=False, 
             reset_metrics_at_epoch_start=reset_metrics_at_epoch_start, call_on_epoch_before_run=call_on_epoch_before_run, input_shape=input_shape, 
-            input_type=input_type, raise_on_error=raise_on_error, sync=sync)
+            input_type=input_type, raise_on_error=raise_on_error, sync=sync, name=name)
         self._add_async_context(Mode.TEST, context_or_none)
         return context_or_none
 
@@ -758,7 +758,7 @@ class ExperimentRun(object):
 
     def _run_unsafe_2x(self, dataset_fn, optimizer, epochs=1, max_steps=float('inf'), pre_initialize_fn=None, post_initialize_fn=None, gradients_fn=None, 
         report_steps_upper_bound=1000, summary_steps=None, checkpoint_steps=1000, checkpoint_on_epoch=False, reset_metrics_at_epoch_start=True, 
-        call_on_epoch_before_run=True, input_shape=None, input_type=None, raise_on_error=False, sync=None):
+        call_on_epoch_before_run=True, input_shape=None, input_type=None, raise_on_error=False, sync=None, name=None):
         # Failsafe
         model = None
 
@@ -801,7 +801,7 @@ class ExperimentRun(object):
             assert getattr(model, "optimizer") is None, "Model must not have an `optimizer` member"
 
             # Create a writer, even if we don't end up using it
-            writer = tf.summary.create_file_writer(os.path.join(model_dir, self.mode.value))
+            writer = tf.summary.create_file_writer(os.path.join(model_dir, name or self.mode.value))
 
             # Create different kind of hooks for summaries and checkpoints
             #   before executing any initialize_fn or otherwise, create checkpoint hooks
