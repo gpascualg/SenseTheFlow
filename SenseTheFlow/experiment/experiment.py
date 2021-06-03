@@ -95,7 +95,7 @@ class Experiment(object):
 
         # Issue a warning if no parameters are set
         if not params:
-            logger.critical("[WARNING] Defaulting to empty parameters", file=sys.stderr)
+            logger.critical("[WARNING] Defaulting to empty parameters")
 
         # Private variables
         self.__model_cls = model_cls
@@ -409,7 +409,7 @@ class Experiment(object):
         assert self.__done_loading.is_set(), "Not loaded yet"
 
         if not self.__is_using_initialized_model:
-            logger.critical("[WARNING] Evaluating a non-trained model", file=sys.stderr)
+            logger.critical("[WARNING] Evaluating a non-trained model")
 
         run = ExperimentRun(self, Mode.EVAL, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
@@ -425,7 +425,7 @@ class Experiment(object):
         assert self.__done_loading.is_set(), "Not loaded yet"
         
         if not self.__is_using_initialized_model:
-            logger.critical("[WARNING] Testing a non-trained model", file=sys.stderr)
+            logger.critical("[WARNING] Testing a non-trained model")
 
         run = ExperimentRun(self, Mode.TEST, use_bars, leave_bars)
         context_or_none = run.run(dataset_fn, optimizer, epochs=epochs, max_steps=max_steps, pre_initialize_fn=pre_initialize_fn, post_initialize_fn=post_initialize_fn, gradients_fn=gradients_fn, 
@@ -500,7 +500,7 @@ class ExperimentHook(object):
         # We can't have exceptions interrumpting the whole process
         except Exception as e:
             self.__skip_after_error = True
-            logger.critical('Error on hook {}/{} -> Disabling hook'.format(self.name, self.mode), file=sys.stderr)
+            logger.critical('Error on hook {}/{} -> Disabling hook'.format(self.name, self.mode))
             tb.print_exc()
         finally:
             self.__ready.set()
