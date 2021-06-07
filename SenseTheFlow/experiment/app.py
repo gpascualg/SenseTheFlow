@@ -15,6 +15,8 @@ def run(main=None, argv=None):
 
 
 def execute_battery(parameters_list, callback):
-    for i, argument_set in enumerate(parameters_list):
-        run(lambda args: callback(i, args), argv=[sys.argv[0]] + [f'--{k}={v}' for k, v in argument_set.items()])
+    def _as_gen():
+        for i, argument_set in enumerate(parameters_list):
+            yield run(lambda args: callback(i, args), argv=[sys.argv[0]] + [f'--{k}={v}' for k, v in argument_set.items()])
 
+    return list(_as_gen())
